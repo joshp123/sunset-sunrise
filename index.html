@@ -1,0 +1,1407 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sunset and sunrise, anywhere, any day</title>
+<!-- Written by AI on 2026.10.20-21 by model claude opus 5.5, from Josh's steering in .agent/josh-steering-ledger.md.
+     Interface tokens follow Nice Weather's src/design-tokens.css; the map uses Ryan Hall's sunset palette and navy.
+     The map is drawn by the graphics card: land and borders as geometry, every pixel's sunset worked out in a shader. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600&family=Barlow+Condensed:wght@800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ui: 1;
+  --font: 'Barlow', system-ui, sans-serif;
+  --font-figure: 'Barlow Condensed', 'Barlow', sans-serif;
+  --size-small: calc(13px * var(--ui)); --size-body: calc(15px * var(--ui)); --size-title: calc(20px * var(--ui)); --size-figure: calc(52px * var(--ui));
+  --margin: calc(24px * var(--ui)); --gap: calc(8px * var(--ui)); --control: calc(40px * var(--ui)); --bar-padding: calc(12px * var(--ui));
+  --radius-control: calc(10px * var(--ui)); --radius-panel: calc(14px * var(--ui));
+  --chart-height: calc(58px * var(--ui));
+  --page: #131416; --raised: #ffffff10; --hover: #ffffff1c; --border: #ffffff1c;
+  --text: #f2f1ee; --muted: #a29f99; --selected-background: #f2f1ee; --selected-text: #131416;
+  --shadow: 0 8px 24px #00000059; --headline: #ef4444; --accent: #f97316;
+  /* The map and the night use Ryan Hall's navy in both themes. */
+  --map-sea: #1b1f2e;
+  --polar-night: repeating-linear-gradient(135deg, #2e3448 0 5px, #474e66 5px 6.5px);
+  --midnight-sun: repeating-linear-gradient(135deg, #fffbea 0 5px, #e8cf7a 5px 6.5px);
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --page: #fbfaf6; --raised: #1a19170b; --hover: #1a191714; --border: #1a19171f;
+    --text: #1a1917; --muted: #5d5a54; --selected-background: #1a1917; --selected-text: #fbfaf6;
+    --shadow: 0 8px 24px #2a20141a; --headline: #dc2626; --accent: #ea580c;
+  }
+}
+@media (max-width: 720px) {
+  :root { --margin: 12px; --control: 44px; --bar-padding: 8px; --chart-height: 56px; --size-figure: 40px; --size-title: 17px; }
+}
+@media (min-width: 2560px) and (max-resolution: 1.5dppx), (min-width: 2560px) and (-webkit-max-device-pixel-ratio: 1.5) {
+  :root { --ui: 1.5; }
+}
+* { box-sizing: border-box; }
+.top-bar > *, .answer, .answer-words { min-width: 0; }
+html, body { margin: 0; height: 100%; background: var(--page); color: var(--text); font-family: var(--font); font-size: var(--size-body); }
+body { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100dvh; overflow: hidden; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+[hidden] { display: none !important; }
+
+.top-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap) calc(20px * var(--ui)); padding: var(--bar-padding) var(--margin); border-bottom: 1px solid var(--border); }
+.answer { flex: 1 1 calc(420px * var(--ui)); min-width: 0; display: flex; align-items: center; gap: calc(14px * var(--ui)); }
+.answer-time { font-family: var(--font-figure); font-weight: 800; font-size: var(--size-figure); line-height: .9; font-variant-numeric: tabular-nums; color: var(--headline); white-space: nowrap; }
+.answer-time.polar { font-size: calc(var(--size-figure) * .62); }
+.answer-words { min-width: 0; font-size: var(--size-title); font-weight: 600; line-height: 1.2; }
+.answer-place, .answer-date { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.answer-date { color: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.answer-dateline { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.answer-tag { color: var(--accent); white-space: nowrap; }
+.answer-tag:not(:empty)::before { content: '· '; color: var(--muted); }
+.date-wrap { min-width: 0; }
+.tools { display: flex; gap: var(--gap); align-items: center; }
+.segmented { display: flex; background: var(--raised); border-radius: var(--radius-control); padding: 3px; height: var(--control); }
+.segmented button { border: 0; background: transparent; padding: 0 calc(14px * var(--ui)); border-radius: calc(7px * var(--ui)); font-weight: 600; white-space: nowrap; }
+.segmented button[aria-pressed=true] { background: var(--selected-background); color: var(--selected-text); }
+.segmented button:hover:not([aria-pressed=true]) { background: var(--hover); }
+.control { height: var(--control); border: 0; background: var(--raised); border-radius: var(--radius-control); padding: 0 calc(14px * var(--ui)); white-space: nowrap; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
+.control:hover { background: var(--hover); }
+.control[aria-pressed=true] { background: var(--selected-background); color: var(--selected-text); }
+.control svg { width: calc(16px * var(--ui)); height: calc(16px * var(--ui)); fill: none; stroke: currentColor; stroke-width: 1.8; flex: none; }
+.control.icon { width: var(--control); padding: 0; justify-content: center; }
+.control.icon svg { fill: currentColor; stroke: none; width: calc(14px * var(--ui)); }
+.search { position: relative; }
+.search input { width: calc(260px * var(--ui)); font-weight: 400; padding-right: calc(var(--control) + 2px); }
+.locate { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: calc(var(--control) - 8px); height: calc(var(--control) - 8px); border: 0; border-radius: 8px; background: transparent; color: var(--text); display: grid; place-items: center; }
+.locate:hover { background: var(--hover); }
+.locate svg { width: calc(16px * var(--ui)); height: calc(16px * var(--ui)); fill: currentColor; }
+.search-results { position: absolute; right: 0; top: calc(var(--control) + 6px); width: calc(300px * var(--ui)); background: var(--page); border: 1px solid var(--border); border-radius: var(--radius-panel); box-shadow: var(--shadow); padding: 6px; z-index: 8; }
+.search-results button { display: flex; justify-content: space-between; gap: 12px; width: 100%; border: 0; background: transparent; padding: 8px 10px; border-radius: 8px; text-align: left; }
+.search-results button:hover, .search-results button:first-child { background: var(--hover); }
+.search-results small { color: var(--muted); }
+
+.map-area { position: relative; min-height: 0; overflow: hidden; background: var(--map-sea); }
+.map-area > canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+#map-labels { cursor: grab; touch-action: none; }
+.map-buttons { position: absolute; right: var(--margin); top: calc(12px * var(--ui)); display: flex; z-index: 2; background: #1b1f2ed9; border-radius: var(--radius-control); padding: 3px; box-shadow: var(--shadow); }
+.map-buttons button { border: 0; height: calc(var(--control) - 6px); padding: 0 calc(14px * var(--ui)); border-radius: calc(7px * var(--ui)); background: transparent; color: #ffffff; font-weight: 600; }
+.map-buttons button[aria-pressed=true] { background: #ffffff; color: #1b1f2e; }
+.map-mode { left: var(--margin); right: auto; }
+.map-key { width: calc(280px * var(--ui)); align-self: end; }
+.map-key-head { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 6px; font-size: var(--size-small); color: var(--muted); }
+.map-key-caption { font-weight: 600; }
+.map-key-bar { position: relative; height: calc(10px * var(--ui)); border-radius: 2px; }
+.map-key-marker { position: absolute; top: -3px; bottom: -3px; width: 3px; margin-left: -1.5px; background: var(--text); border-radius: 2px; box-shadow: 0 0 0 1.5px var(--page); }
+.map-key-ticks { position: relative; height: calc(18px * var(--ui)); font-size: calc(12px * var(--ui)); color: var(--muted); font-variant-numeric: tabular-nums; }
+.map-key-ticks span { position: absolute; top: 3px; transform: translateX(-50%); white-space: nowrap; }
+.map-key-polar { display: flex; gap: 12px; font-size: calc(12px * var(--ui)); }
+.map-key-polar span { display: inline-flex; align-items: center; gap: 6px; }
+.map-key-polar i { width: calc(14px * var(--ui)); height: calc(10px * var(--ui)); border-radius: 2px; display: inline-block; }
+.polar-night { background: var(--polar-night); } .midnight-sun { background: var(--midnight-sun); }
+.attribution { position: absolute; right: 6px; bottom: 4px; z-index: 2; text-decoration: none; white-space: nowrap; font-size: calc(11px * var(--ui)); color: #ffffffa6; }
+.tooltip { position: absolute; pointer-events: none; background: var(--page); border: 1px solid var(--border); box-shadow: var(--shadow); border-radius: 8px; padding: 5px 9px; font-size: var(--size-small); white-space: nowrap; z-index: 4; }
+.tooltip b { font-weight: 600; }
+
+.year-bar { border-top: 1px solid var(--border); padding: var(--bar-padding) var(--margin); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: end; gap: calc(28px * var(--ui)); }
+.year { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.strip-row { display: flex; align-items: center; gap: calc(10px * var(--ui)); }
+.strip-row .chart-wrap { flex: 1; min-width: 0; }
+.days { display: flex; gap: 2px; margin-left: calc(var(--control) + 10px * var(--ui)); overflow-x: auto; scrollbar-width: none; }
+.days::-webkit-scrollbar { display: none; }
+.days button { flex: none; border: 0; background: transparent; color: var(--muted); font-size: var(--size-small); font-weight: 600; padding: 3px calc(9px * var(--ui)); border-radius: 999px; white-space: nowrap; }
+.days button:hover { color: var(--text); }
+.days button[aria-pressed=true] { background: var(--selected-background); color: var(--selected-text); }
+.clocks { display: flex; align-items: center; }
+.date-line { border: 0; background: transparent; padding: 0; color: var(--muted); font: inherit; display: inline-flex; align-items: center; gap: 6px; max-width: 100%; text-align: left; }
+.date-line:hover { color: var(--text); }
+.date-line svg { width: calc(12px * var(--ui)); height: calc(12px * var(--ui)); fill: none; stroke: currentColor; stroke-width: 1.8; flex: none; }
+.date-wrap, .share-wrap { position: relative; }
+.calendar { position: absolute; left: 0; top: calc(100% + 10px); width: calc(300px * var(--ui)); background: var(--page); border: 1px solid var(--border); border-radius: var(--radius-panel); box-shadow: var(--shadow); padding: calc(12px * var(--ui)); z-index: 9; }
+.calendar-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-weight: 600; }
+.calendar-head button { border: 0; background: var(--raised); border-radius: 8px; width: calc(34px * var(--ui)); height: calc(34px * var(--ui)); font-size: 18px; }
+.calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+.calendar-grid .weekday { font-size: var(--size-small); color: var(--muted); padding: 4px 0; }
+.calendar-grid button { border: 0; background: transparent; border-radius: 8px; height: calc(36px * var(--ui)); font-variant-numeric: tabular-nums; position: relative; }
+.calendar-grid button:hover { background: var(--hover); }
+.calendar-grid button.today { box-shadow: inset 0 0 0 1.5px var(--text); }
+.calendar-grid button[aria-pressed=true] { background: var(--selected-background); color: var(--selected-text); }
+.calendar-grid button.key::after { content: ''; position: absolute; left: 50%; bottom: 4px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--accent); }
+.chart-wrap { position: relative; }
+#year-chart { width: 100%; height: var(--chart-height); display: block; cursor: ew-resize; touch-action: none; }
+.chart-tooltip { position: absolute; top: 0; transform: translate(-50%, -100%); pointer-events: none; background: var(--page); border: 1px solid var(--border); box-shadow: var(--shadow); border-radius: 8px; padding: 5px 9px; font-size: var(--size-small); white-space: nowrap; z-index: 4; }
+.chart-tooltip b { font-weight: 600; }
+.share-panel { position: absolute; right: 0; top: calc(var(--control) + 10px); width: calc(340px * var(--ui)); background: var(--page); border: 1px solid var(--border); border-radius: var(--radius-panel); box-shadow: var(--shadow); padding: calc(12px * var(--ui)); z-index: 9; }
+.share-panel img { width: 100%; height: auto; display: block; border-radius: 8px; }
+.share-button { background: var(--selected-background); color: var(--selected-text); }
+.share-button:hover { background: var(--selected-background); opacity: .88; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.panel-head .close { border: 0; background: var(--raised); width: 32px; height: 32px; border-radius: 999px; font-size: 20px; line-height: 1; }
+.backdrop { position: fixed; inset: 0; z-index: 8; background: transparent; }
+.share-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); margin-top: calc(12px * var(--ui)); }
+.share-actions .control { justify-content: center; }
+.share-actions .primary { grid-column: 1 / -1; background: var(--selected-background); color: var(--selected-text); }
+.share-status { margin: 8px 0 0; min-height: 1.2em; color: var(--muted); font-size: var(--size-small); }
+.card-view { position: fixed; inset: 0; background: #000; display: flex; align-items: center; justify-content: center; z-index: 20; }
+.card-view img { max-width: 100%; max-height: 100%; }
+
+@media (max-width: 1180px) { .search input { width: calc(170px * var(--ui)); } }
+@media (max-width: 720px) {
+  .tools { width: 100%; }
+  .tools .search { flex: 1; min-width: 0; } .search input { width: 100%; }
+  .search-results { width: 100%; }
+  .answer-dateline { flex-direction: column; align-items: flex-start; gap: 0; }
+  .answer-tag { min-height: 1.2em; } .answer-tag::before { display: none; }
+  .calendar { top: auto; }
+  .share-button { padding: 0 12px; }
+  .year-bar { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .map-key { width: 100%; }
+  .days { margin-left: 0; order: 2; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; overflow: visible; }
+  .days button { white-space: normal; line-height: 1.15; padding: 5px 2px; min-height: calc(2 * 1.15em + 10px); border-radius: 10px; }
+  .clocks .segmented { flex: 1; } .clocks .segmented button { flex: 1; padding: 0 4px; }
+  .clocks .long { display: none; }
+  .map-buttons button { height: 32px; padding: 0 10px; font-size: var(--size-small); }
+  .calendar { position: fixed; left: 12px; right: 12px; bottom: 12px; width: auto; }
+  .share-panel { position: fixed; left: 12px; right: 12px; bottom: 12px; width: auto; max-height: calc(100dvh - 24px); overflow: auto; }
+  .share-panel img { width: auto; max-width: 100%; max-height: 46dvh; margin: 0 auto; }
+  .backdrop { background: #0009; }
+}
+</style>
+</head>
+<body>
+<header class="top-bar">
+  <div class="answer" aria-live="polite">
+    <span class="answer-time" id="answer-time"></span>
+    <div class="answer-words">
+      <div class="answer-place" id="answer-place">&nbsp;</div>
+      <div class="answer-dateline">
+        <div class="date-wrap">
+          <button class="date-line" id="date-button" aria-label="Choose a date"><span class="answer-date" id="answer-date">&nbsp;</span><svg viewBox="0 0 12 12"><path d="M2.5 4.5 6 8l3.5-3.5"/></svg></button>
+          <div class="calendar" id="calendar" role="dialog" aria-label="Choose a date" hidden>
+            <div class="calendar-head"><button id="calendar-previous" aria-label="Previous month">‹</button><span id="calendar-month"></span><button id="calendar-next" aria-label="Next month">›</button></div>
+            <div class="calendar-grid" id="calendar-grid"></div>
+          </div>
+        </div>
+        <span class="answer-tag" id="answer-tag"></span>
+      </div>
+    </div>
+  </div>
+  <div class="tools">
+    <div class="search">
+      <input class="control" id="search" placeholder="Search a place" autocomplete="off" spellcheck="false" aria-label="Search a place">
+      <button class="locate" id="locate" aria-label="My location" title="My location"><svg viewBox="0 0 16 16"><path d="M14 2 2 7.2l5.2 1.6L8.8 14z"/></svg></button>
+      <div class="search-results" id="search-results" hidden></div>
+    </div>
+    <div class="share-wrap">
+        <button class="control share-button" id="share-button"><svg viewBox="0 0 16 16"><path d="M8 10V1.5M4.5 5 8 1.5 11.5 5M3 8v6.5h10V8"/></svg>Share</button>
+        <div class="share-panel" id="share-panel" role="dialog" aria-label="Share" hidden>
+          <div class="panel-head"><b>Share</b><button class="close" id="share-close" aria-label="Close">×</button></div>
+          <img id="share-preview" alt="">
+          <div class="share-actions">
+            <button class="control primary" id="share-native" hidden>Share…</button>
+            <button class="control" id="copy-image">Copy image</button>
+            <button class="control" id="copy-link">Copy link</button>
+          </div>
+          <p class="share-status" id="share-status" role="status"></p>
+        </div>
+      </div>
+  </div>
+</header>
+
+<main class="map-area" id="map-area">
+  <canvas id="map-gl"></canvas>
+  <canvas id="map-labels"></canvas>
+  <div class="map-buttons map-mode" id="map-mode" role="group" aria-label="Show">
+    <button id="show-sunset" aria-pressed="true">Sunset</button>
+    <button id="show-sunrise" aria-pressed="false">Sunrise</button>
+  </div>
+  <div class="map-buttons" id="map-buttons">
+    <button id="view-world">World</button>
+    <button id="view-region">Europe</button>
+  </div>
+  <div class="tooltip" id="tooltip" hidden></div>
+  <a class="attribution" id="attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a>
+</main>
+
+<div class="backdrop" id="backdrop" hidden></div>
+<footer class="year-bar">
+  <div class="map-key" id="map-key">
+    <div class="map-key-head"><span class="map-key-caption" id="map-key-caption">Sunset time</span><span class="map-key-polar" id="map-key-polar"><span id="key-polar-night" hidden><i class="polar-night"></i>Polar night</span><span id="key-midnight-sun" hidden><i class="midnight-sun"></i>Midnight sun</span></span></div>
+    <div class="map-key-bar" id="map-key-bar"><i class="map-key-marker" id="map-key-marker" hidden></i></div>
+    <div class="map-key-ticks" id="map-key-ticks"></div>
+
+  </div>
+  <div class="year">
+    <div class="days" id="key-days" role="group" aria-label="Days"></div>
+    <div class="strip-row">
+      <button class="control icon" id="play" aria-label="Play the year"><svg viewBox="0 0 14 14" id="play-icon"><path d="M2 1l11 6-11 6z"/></svg></button>
+      <div class="chart-wrap">
+        <canvas id="year-chart" tabindex="0" aria-label="The year. Drag or use the arrow keys to choose a day."></canvas>
+        <div class="chart-tooltip" id="chart-tooltip" hidden></div>
+      </div>
+    </div>
+  </div>
+  <div class="clocks" role="group" aria-label="Clocks">
+    <div class="segmented" id="clocks">
+      <button data-clocks="as-they-are" aria-pressed="true">Clocks change</button>
+      <button data-clocks="winter-time" aria-pressed="false">Always winter<span class="long"> time</span></button>
+      <button data-clocks="summer-time" aria-pressed="false">Always summer<span class="long"> time</span></button>
+    </div>
+  </div>
+</footer>
+
+<script type="module">
+import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7/+esm';
+import * as topojson from 'https://cdn.jsdelivr.net/npm/topojson-client@3/+esm';
+import earcut, { deviation } from 'https://cdn.jsdelivr.net/npm/earcut@3/+esm';
+
+// ================================================================ The sun (NOAA / Meeus)
+const DEG = Math.PI / 180, DAY_MS = 86400000;
+const SIN_SUN_ON_HORIZON = Math.sin(-0.833 * DEG); // centre of the sun 0.833 degrees down: its radius plus refraction
+function solarDeclinationAndEquationOfTime(utcMs) {
+  const jc = (utcMs / DAY_MS + 2440587.5 - 2451545) / 36525;
+  const meanLongitude = ((280.46646 + jc * (36000.76983 + jc * 0.0003032)) % 360 + 360) % 360;
+  const meanAnomaly = 357.52911 + jc * (35999.05029 - 0.0001537 * jc);
+  const eccentricity = 0.016708634 - jc * (0.000042037 + 0.0000001267 * jc);
+  const centre = Math.sin(meanAnomaly * DEG) * (1.914602 - jc * (0.004817 + 0.000014 * jc))
+    + Math.sin(2 * meanAnomaly * DEG) * (0.019993 - 0.000101 * jc) + Math.sin(3 * meanAnomaly * DEG) * 0.000289;
+  const omega = 125.04 - 1934.136 * jc;
+  const apparentLongitude = meanLongitude + centre - 0.00569 - 0.00478 * Math.sin(omega * DEG);
+  const obliquity = 23 + (26 + (21.448 - jc * (46.815 + jc * (0.00059 - jc * 0.001813))) / 60) / 60 + 0.00256 * Math.cos(omega * DEG);
+  const declination = Math.asin(Math.sin(obliquity * DEG) * Math.sin(apparentLongitude * DEG));
+  const y = Math.tan(obliquity * DEG / 2) ** 2;
+  const equationOfTimeMinutes = 4 / DEG * (y * Math.sin(2 * meanLongitude * DEG) - 2 * eccentricity * Math.sin(meanAnomaly * DEG)
+    + 4 * eccentricity * y * Math.sin(meanAnomaly * DEG) * Math.cos(2 * meanLongitude * DEG)
+    - 0.5 * y * y * Math.sin(4 * meanLongitude * DEG) - 1.25 * eccentricity * eccentricity * Math.sin(2 * meanAnomaly * DEG));
+  return { declination, equationOfTimeMinutes };
+}
+// Minutes after 00:00 UTC on dayUtcMs, or { polar: 'night' | 'day' } when the sun does not cross the horizon.
+function sunEventUtcMinutes(dayUtcMs, latitude, longitude, event) {
+  const direction = event === 'sunset' ? 1 : -1;
+  let minutes = 720 - 4 * longitude + direction * 360;
+  for (let pass = 0; pass < 3; pass++) {
+    const { declination, equationOfTimeMinutes } = solarDeclinationAndEquationOfTime(dayUtcMs + minutes * 60000);
+    const cosHourAngle = (SIN_SUN_ON_HORIZON - Math.sin(latitude * DEG) * Math.sin(declination)) / (Math.cos(latitude * DEG) * Math.cos(declination));
+    if (cosHourAngle > 1) return { polar: 'night' };
+    if (cosHourAngle < -1) return { polar: 'day' };
+    minutes = 720 - 4 * longitude - equationOfTimeMinutes + direction * 4 * Math.acos(cosHourAngle) / DEG;
+  }
+  return { minutes };
+}
+// The shader takes the sun's position at noon UTC and its rate of change, which is exact to well under a minute.
+function sunUniforms(dayUtcMs) {
+  const start = solarDeclinationAndEquationOfTime(dayUtcMs), noon = solarDeclinationAndEquationOfTime(dayUtcMs + DAY_MS / 2), end = solarDeclinationAndEquationOfTime(dayUtcMs + DAY_MS);
+  return [noon.declination, (end.declination - start.declination) / 1440, noon.equationOfTimeMinutes, (end.equationOfTimeMinutes - start.equationOfTimeMinutes) / 1440];
+}
+
+// ================================================================ Clocks (the browser's own IANA database, read once per zone and year)
+const offsetFormatters = new Map();
+function intlOffsetMinutes(timeZone, utcMs) {
+  let formatter = offsetFormatters.get(timeZone);
+  if (!formatter) { formatter = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'longOffset' }); offsetFormatters.set(timeZone, formatter); }
+  const match = formatter.formatToParts(utcMs).find(part => part.type === 'timeZoneName').value.match(/GMT([+-])(\d{2}):(\d{2})/);
+  return match ? (match[1] === '+' ? 1 : -1) * (Number(match[2]) * 60 + Number(match[3])) : 0;
+}
+const daysInYear = year => (Date.UTC(year + 1, 0, 1) - Date.UTC(year, 0, 1)) / DAY_MS;
+const dayOfYear = dayUtcMs => (dayUtcMs - Date.UTC(new Date(dayUtcMs).getUTCFullYear(), 0, 1)) / DAY_MS;
+const yearOf = dayUtcMs => new Date(dayUtcMs).getUTCFullYear();
+const dailyOffsetCache = new Map();
+// Each day's offset at noon UTC: a sample each month, and a binary search only where the offset changes.
+function dailyOffsets(timeZone, year) {
+  const key = `${timeZone}|${year}`;
+  let days = dailyOffsetCache.get(key);
+  if (days) return days;
+  const count = daysInYear(year), at = index => intlOffsetMinutes(timeZone, Date.UTC(year, 0, 1 + index, 12));
+  days = new Int16Array(count);
+  const samples = d3.range(12).map(month => (Date.UTC(year, month, 1) - Date.UTC(year, 0, 1)) / DAY_MS).concat(count - 1);
+  const values = samples.map(at);
+  for (let i = 0; i < samples.length - 1; i++) {
+    const from = samples[i], to = samples[i + 1];
+    if (values[i] === values[i + 1]) { days.fill(values[i], from, to + 1); continue; }
+    let low = from, high = to;
+    while (high - low > 1) { const middle = (low + high) >> 1; if (at(middle) === values[i]) low = middle; else high = middle; }
+    days.fill(values[i], from, high); days.fill(values[i + 1], high, to + 1);
+  }
+  dailyOffsetCache.set(key, days);
+  return days;
+}
+function clockOffset(timeZone, dayUtcMs, clocks) {
+  const days = dailyOffsets(timeZone, yearOf(dayUtcMs));
+  if (clocks === 'as-they-are') return days[dayOfYear(dayUtcMs)];
+  return clocks === 'winter-time' ? Math.min(days[14], days[195]) : Math.max(days[14], days[195]);
+}
+function localClockMinutes(utcMinutes, offset, event) {
+  let minutes = ((utcMinutes + offset) % 1440 + 1440) % 1440;
+  if (event === 'sunset' && minutes < 360) minutes += 1440;
+  if (event === 'sunrise' && minutes > 1080) minutes -= 1440;
+  return minutes;
+}
+function formatClock(minutes) {
+  const rounded = ((Math.round(minutes) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(rounded / 60)).padStart(2, '0')}:${String(rounded % 60).padStart(2, '0')}`;
+}
+function placeEvent(place, dayUtcMs, event, clocks) {
+  const result = sunEventUtcMinutes(dayUtcMs, place.lat, place.lon, event);
+  if (result.polar) return result;
+  return { minutes: localClockMinutes(result.minutes, clockOffset(place.timeZone, dayUtcMs, clocks), event) };
+}
+const eventWords = result => result.polar === 'night' ? 'Polar night' : result.polar === 'day' ? 'Midnight sun' : formatClock(result.minutes);
+
+// ================================================================ Colour: Ryan Hall's palette, stretched over the times on screen
+// Darker means darker at that end of the day: an early sunset, or a late sunrise. Sunrise mirrors sunset about 12:30.
+// Ryan Hall's sky from night to day, spaced so every step is an equal visual difference (CIEDE2000). Darker means a darker
+// evening: an early sunset, or a late sunrise (sunrise mirrors sunset about 12:30).
+const SKY_STOPS = ['#0b0f3a', '#13226a', '#1b399b', '#274ec6', '#5f3ed7', '#952ecc', '#bb2ab4', '#d42c95', '#e63178', '#ed3d5c', '#f24741', '#f46234', '#f67924', '#f89321', '#f9ad28', '#fbca53', '#fce486', '#fff1c0', '#fffbe8'];
+const RAMP = d3.scaleLinear().domain(d3.range(SKY_STOPS.length).map(i => i / (SKY_STOPS.length - 1))).range(SKY_STOPS).interpolate(d3.interpolateLab);
+const eveningEquivalent = (minutes, event) => event === 'sunset' ? minutes : 1500 - minutes;
+const localFromEvening = (evening, event) => event === 'sunset' ? evening : 1500 - evening;
+const rampColourAt = (evening, domain) => RAMP(Math.max(0, Math.min(1, (evening - domain[0]) / (domain[1] - domain[0]))));
+const premultiplied = (colour, alpha = 1) => { const c = d3.rgb(colour); return [c.r / 255 * alpha, c.g / 255 * alpha, c.b / 255 * alpha, alpha]; };
+const SEA = '#1b1f2e';
+
+// ================================================================ Data
+const [zoneNames, zoneAbbreviations, cityRows, zoneImage, land, countries] = await Promise.all([
+  fetch('data/zones.json').then(r => r.json()),
+  fetch('data/zone-names.json').then(r => r.json()),
+  fetch('data/cities.json').then(r => r.json()),
+  new Promise(resolve => { const image = new Image(); image.onload = () => resolve(image); image.src = 'data/zones.png'; }),
+  fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-50m.json').then(r => r.json()),
+  fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json').then(r => r.json()),
+]);
+const ZONE_COLUMNS = 3600, ZONE_ROWS = 1800;
+const zoneBytes = (() => {
+  const context = new OffscreenCanvas(ZONE_COLUMNS, ZONE_ROWS).getContext('2d', { willReadFrequently: true });
+  context.drawImage(zoneImage, 0, 0);
+  const rgba = context.getImageData(0, 0, ZONE_COLUMNS, ZONE_ROWS).data, rg = new Uint8Array(ZONE_COLUMNS * ZONE_ROWS * 2);
+  for (let i = 0, j = 0; i < rgba.length; i += 4, j += 2) { rg[j] = rgba[i]; rg[j + 1] = rgba[i + 1]; }
+  return rg;
+})();
+const seaZone = zoneNames.map(name => name === 'none' || name.startsWith('Etc/'));
+zoneNames[0] = 'Etc/UTC'; // cells no zone covers are sea; they keep UTC so a clock lookup never fails
+function zoneIndexAt(longitude, latitude) {
+  const column = ((Math.floor((longitude + 180) * 10) % ZONE_COLUMNS) + ZONE_COLUMNS) % ZONE_COLUMNS;
+  const row = Math.min(ZONE_ROWS - 1, Math.max(0, Math.floor((90 - latitude) * 10)));
+  const i = (row * ZONE_COLUMNS + column) * 2;
+  return (zoneBytes[i] << 8) | zoneBytes[i + 1];
+}
+const isLandAt = (longitude, latitude) => !seaZone[zoneIndexAt(longitude, latitude)];
+const plainName = name => name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ø/g, 'o').replace(/æ/g, 'ae').replace(/ß/g, 'ss').replace(/ł/g, 'l').toLowerCase();
+const places = cityRows.map(([name, lat, lon, population, timeZone, country, capital, labelable, aliases]) =>
+  ({ name, plainName: plainName(name), searchNames: [name, ...(aliases ? aliases.split('|') : [])].map(plainName), lat, lon, population, timeZone, country, capital: !!capital, labelable: !!labelable }));
+const searchOrder = [...places].sort((a, b) => b.population * (b.capital ? 10 : 1) - a.population * (a.capital ? 10 : 1));
+// Three sizes of label: big cities, regional cities, the rest.
+const labelTier = place => place.population >= 5e6 || (place.capital && place.population >= 1e6) ? 0 : place.population >= 1e6 || (place.capital && place.population >= 2e5) ? 1 : 2;
+const labelCandidates = places.filter(place => place.labelable).map(place => ({ ...place, tier: labelTier(place) }))
+  .sort((a, b) => a.tier - b.tier || b.capital - a.capital || b.population - a.population);
+const regionDisplayNames = new Intl.DisplayNames(['en-GB'], { type: 'region' });
+const regionNames = { of: code => code === 'PS' ? 'Palestine' : regionDisplayNames.of(code) };
+
+// Land as triangles and coasts and borders as line segments, for the graphics card. Antarctica is never in view.
+// A ring that crosses the 180th meridian is made continuous, then the whole polygon is moved by a multiple of 360 degrees
+// so its middle sits between -180 and 180. Copies drawn 360 degrees either side cover what pokes out.
+function unwrapRing(ring) {
+  const out = [];
+  let previous = ring[0][0], shift = 0;
+  for (const [longitude, latitude] of ring) {
+    if (longitude - previous > 180) shift -= 360; else if (previous - longitude > 180) shift += 360;
+    previous = longitude; out.push([longitude + shift, latitude]);
+  }
+  return out;
+}
+const middleLongitude = ring => (d3.min(ring, p => p[0]) + d3.max(ring, p => p[0])) / 2;
+function landTriangles() {
+  const positions = [], indices = [];
+  const landFeature = topojson.feature(land, land.objects.land);
+  const polygons = (landFeature.features || [landFeature]).flatMap(f => f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates);
+  let worstDeviation = 0;
+  for (const polygon of polygons) {
+    if (d3.max(polygon[0], point => point[1]) < -60) continue;
+    const rings = polygon.map(unwrapRing);
+    const outerMiddle = middleLongitude(rings[0]), outerShift = -360 * Math.round(outerMiddle / 360);
+    const flat = [], holes = [], base = positions.length / 2;
+    rings.forEach((ring, index) => {
+      const shift = index === 0 ? outerShift : outerShift - 360 * Math.round((middleLongitude(ring) - outerMiddle) / 360);
+      if (index) holes.push(flat.length / 2);
+      for (const [longitude, latitude] of ring) flat.push(longitude + shift, latitude);
+    });
+    const triangles = earcut(flat, holes);
+    worstDeviation = Math.max(worstDeviation, deviation(flat, holes, 2, triangles));
+    for (const index of triangles) indices.push(base + index);
+    for (const value of flat) positions.push(value);
+  }
+  return { positions: new Float32Array(positions), indices: new Uint32Array(indices), worstDeviation };
+}
+function lineSegments(mesh) {
+  const segments = [];
+  for (const line of mesh.coordinates) for (let i = 1; i < line.length; i++) {
+    const [a, b] = [line[i - 1], line[i]];
+    if (Math.abs(a[0] - b[0]) < 180 && Math.max(a[1], b[1]) > -60) segments.push(a[0], a[1], b[0], b[1]);
+  }
+  return new Float32Array(segments);
+}
+const geometry = {
+  land: landTriangles(),
+  coast: lineSegments(topojson.mesh(land, land.objects.land)),
+  borders: (() => {
+    const pair = (a, b, x, y) => (a.id === x && b.id === y) || (a.id === y && b.id === x);
+    const mesh = topojson.mesh(countries, countries.objects.countries, (a, b) => a !== b && !pair(a, b, '376', '275') && !pair(a, b, '376', '760'));
+    mesh.coordinates.push([[35.652, 33.276], [35.626, 33.222], [35.640, 33.130], [35.616, 33.020], [35.632, 32.913], [35.651, 32.870],
+      [35.642, 32.810], [35.636, 32.765], [35.663, 32.705], [35.594, 32.703]]);
+    return lineSegments(mesh);
+  })(),
+};
+
+// ================================================================ The renderer: one WebGL2 context per canvas
+const PROJECT = `
+uniform float scale; uniform vec2 translate; uniform vec2 viewport; uniform float lonShift;
+vec2 project(vec2 lonLat) {
+  float lambda = radians(lonLat.x + lonShift), phi = radians(clamp(lonLat.y, -85.0, 85.0));
+  return vec2(scale * lambda + translate.x, translate.y - scale * log(tan(0.78539816 + phi * 0.5)));
+}
+vec4 clip(vec2 p) { return vec4(p.x / viewport.x * 2.0 - 1.0, 1.0 - p.y / viewport.y * 2.0, 0.0, 1.0); }`;
+const LAND_VERTEX = `#version 300 es
+in vec2 lonLat;${PROJECT}
+void main() { gl_Position = clip(project(lonLat)); }`;
+const FIELD_FRAGMENT = `#version 300 es
+precision highp float; precision highp int;
+uniform float scale; uniform vec2 translate; uniform float pixelRatio; uniform float deviceHeight;
+uniform float direction; uniform vec4 sun; uniform float sinHorizon; uniform vec2 domain;
+uniform sampler2D zones; uniform sampler2D offsets; uniform sampler2D ramp;
+uniform vec4 polarNight; uniform vec4 polarNightStripe; uniform vec4 midnightSun; uniform vec4 midnightSunStripe;
+out vec4 colour;
+void main() {
+  vec2 css = vec2(gl_FragCoord.x, deviceHeight - gl_FragCoord.y) / pixelRatio;
+  float lambda = (css.x - translate.x) / scale;
+  float phi = 2.0 * atan(exp((translate.y - css.y) / scale)) - 1.5707963;
+  float longitude = mod(degrees(lambda) + 180.0, 360.0) - 180.0, latitude = degrees(phi);
+  float stripe = mod(gl_FragCoord.x + gl_FragCoord.y, 9.0 * pixelRatio) < 1.6 * pixelRatio ? 1.0 : 0.0;
+  float guess = 720.0 - 4.0 * longitude + direction * 360.0;
+  float declination = sun.x + sun.y * (guess - 720.0), equationOfTime = sun.z + sun.w * (guess - 720.0);
+  float cosHourAngle = (sinHorizon - sin(phi) * sin(declination)) / (cos(phi) * cos(declination));
+  float utcMinutes = 720.0 - 4.0 * longitude - equationOfTime + direction * 4.0 * degrees(acos(clamp(cosHourAngle, -1.0, 1.0)));
+  ivec2 cell = ivec2(clamp(int(floor((longitude + 180.0) * 10.0)), 0, 3599), clamp(int(floor((90.0 - latitude) * 10.0)), 0, 1799));
+  vec4 z = texelFetch(zones, cell, 0);
+  int zone = int(z.r * 255.0 + 0.5) * 256 + int(z.g * 255.0 + 0.5);
+  float local = mod(utcMinutes + texelFetch(offsets, ivec2(zone, 0), 0).r, 1440.0);
+  if (direction > 0.0 && local < 360.0) local += 1440.0;
+  if (direction < 0.0 && local > 1080.0) local -= 1440.0;
+  float evening = direction > 0.0 ? local : 1500.0 - local;
+  if (cosHourAngle > 1.0) { colour = mix(polarNight, polarNightStripe, stripe); return; }
+  if (cosHourAngle < -1.0) { colour = mix(midnightSun, midnightSunStripe, stripe); return; }
+  float t = clamp((evening - domain.x) / (domain.y - domain.x), 0.0, 1.0);
+  colour = texture(ramp, vec2(t * 255.0 / 256.0 + 0.5 / 256.0, 0.5));
+}`;
+const LINE_VERTEX = `#version 300 es
+in vec2 corner; in vec4 segment; uniform float halfWidth;${PROJECT}
+void main() {
+  vec2 a = project(segment.xy), b = project(segment.zw), along = b - a;
+  float length_ = max(length(along), 1e-6); along /= length_;
+  vec2 across = vec2(-along.y, along.x);
+  gl_Position = clip(mix(a - along * halfWidth, b + along * halfWidth, corner.x) + across * corner.y * halfWidth);
+}`;
+const LINE_FRAGMENT = `#version 300 es
+precision mediump float; uniform vec4 lineColour; out vec4 colour; void main() { colour = lineColour; }`;
+
+function createRenderer(canvas) {
+  const gl = canvas.getContext('webgl2', { antialias: true, alpha: false, premultipliedAlpha: true });
+  if (!gl) throw new Error('This browser has no WebGL2');
+  const compile = (vertexSource, fragmentSource) => {
+    const program = gl.createProgram();
+    for (const [type, source] of [[gl.VERTEX_SHADER, vertexSource], [gl.FRAGMENT_SHADER, fragmentSource]]) {
+      const shader = gl.createShader(type); gl.shaderSource(shader, source); gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader));
+      gl.attachShader(program, shader);
+    }
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+    const uniforms = new Proxy({}, { get: (cache, name) => cache[name] ??= gl.getUniformLocation(program, name) });
+    return { program, uniforms };
+  };
+  const field = compile(LAND_VERTEX, FIELD_FRAGMENT), lines = compile(LINE_VERTEX, LINE_FRAGMENT);
+
+  const landVao = gl.createVertexArray(); gl.bindVertexArray(landVao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, geometry.land.positions, gl.STATIC_DRAW);
+  const lonLat = gl.getAttribLocation(field.program, 'lonLat'); gl.enableVertexAttribArray(lonLat); gl.vertexAttribPointer(lonLat, 2, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, geometry.land.indices, gl.STATIC_DRAW);
+  const lineVao = segments => {
+    const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, -1, 1, -1, 1, 1, 0, -1, 1, 1, 0, 1]), gl.STATIC_DRAW);
+    const corner = gl.getAttribLocation(lines.program, 'corner'); gl.enableVertexAttribArray(corner); gl.vertexAttribPointer(corner, 2, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, segments, gl.STATIC_DRAW);
+    const segment = gl.getAttribLocation(lines.program, 'segment'); gl.enableVertexAttribArray(segment); gl.vertexAttribPointer(segment, 4, gl.FLOAT, false, 0, 0); gl.vertexAttribDivisor(segment, 1);
+    return { vao, count: segments.length / 4 };
+  };
+  const coast = lineVao(geometry.coast), borders = lineVao(geometry.borders);
+  gl.bindVertexArray(null);
+
+  const texture = (unit, filter) => {
+    const t = gl.createTexture(); gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return t;
+  };
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  texture(0, gl.NEAREST); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG8, ZONE_COLUMNS, ZONE_ROWS, 0, gl.RG, gl.UNSIGNED_BYTE, zoneBytes);
+  texture(1, gl.NEAREST);
+  texture(2, gl.LINEAR);
+  const rampBytes = new Uint8Array(256 * 4);
+  d3.range(256).forEach(i => { const c = d3.rgb(RAMP(i / 255)); rampBytes.set([c.r, c.g, c.b, 255], i * 4); });
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, rampBytes);
+
+  const colours = {
+    polarNight: premultiplied('#2e3448'), polarNightStripe: premultiplied('#474e66'),
+    midnightSun: premultiplied('#fffbea'), midnightSunStripe: premultiplied('#e8cf7a'),
+    coast: premultiplied('#ffffff', 0.38), borders: premultiplied(SEA, 0.72),
+  };
+  const sea = d3.rgb(SEA);
+  return {
+    canvas,
+    // view: { width, height (CSS px), pixelRatio, scale, translate: [x, y] }; picture: { sun, direction, offsets, domain }
+    draw(view, picture) {
+      const deviceWidth = Math.round(view.width * view.pixelRatio), deviceHeight = Math.round(view.height * view.pixelRatio);
+      if (canvas.width !== deviceWidth || canvas.height !== deviceHeight) { canvas.width = deviceWidth; canvas.height = deviceHeight; }
+      gl.viewport(0, 0, deviceWidth, deviceHeight);
+      gl.clearColor(sea.r / 255, sea.g / 255, sea.b / 255, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, picture.offsets.length, 1, 0, gl.RED, gl.FLOAT, picture.offsets);
+      const westEdge = -view.translate[0] / view.scale / DEG, eastEdge = (view.width - view.translate[0]) / view.scale / DEG;
+      const shifts = [-720, -360, 0, 360, 720].filter(shift => eastEdge > -200 + shift && westEdge < 200 + shift);
+      const shared = ({ uniforms }) => {
+        gl.uniform1f(uniforms.scale, view.scale); gl.uniform2f(uniforms.translate, view.translate[0], view.translate[1]);
+        gl.uniform2f(uniforms.viewport, view.width, view.height);
+      };
+      gl.useProgram(field.program); shared(field);
+      const u = field.uniforms;
+      gl.uniform1f(u.pixelRatio, view.pixelRatio); gl.uniform1f(u.deviceHeight, deviceHeight);
+      gl.uniform1f(u.direction, picture.direction); gl.uniform4fv(u.sun, picture.sun); gl.uniform1f(u.sinHorizon, SIN_SUN_ON_HORIZON);
+      gl.uniform2f(u.domain, picture.domain[0], picture.domain[1]);
+      gl.uniform1i(u.zones, 0); gl.uniform1i(u.offsets, 1); gl.uniform1i(u.ramp, 2);
+      for (const name of ['polarNight', 'polarNightStripe', 'midnightSun', 'midnightSunStripe']) gl.uniform4fv(u[name], colours[name]);
+      gl.bindVertexArray(landVao);
+      for (const shift of shifts) { gl.uniform1f(u.lonShift, shift); gl.drawElements(gl.TRIANGLES, geometry.land.indices.length, gl.UNSIGNED_INT, 0); }
+      gl.useProgram(lines.program); shared(lines);
+      gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      for (const [layer, colour, width] of [[coast, colours.coast, 0.35], [borders, colours.borders, 0.5 * (view.lineScale || 1)]]) {
+        gl.bindVertexArray(layer.vao); gl.uniform4fv(lines.uniforms.lineColour, colour); gl.uniform1f(lines.uniforms.halfWidth, width);
+        for (const shift of shifts) { gl.uniform1f(lines.uniforms.lonShift, shift); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, layer.count); }
+      }
+      gl.disable(gl.BLEND); gl.bindVertexArray(null);
+    },
+  };
+}
+
+// ================================================================ What a picture needs: offsets per zone and the times on screen
+function zoneOffsets(dayUtcMs, clocks) {
+  const offsets = new Float32Array(zoneNames.length);
+  for (let zone = 1; zone < zoneNames.length; zone++) offsets[zone] = clockOffset(zoneNames[zone], dayUtcMs, clocks);
+  return offsets;
+}
+// The colour scale belongs to the day, not the view: it spans the world's cities' times that day (5th to 95th
+// percentile, at least 90 minutes), so every view and screenshot of one day uses the same colours.
+// The key belongs to the date: it spans the world's cities' times that day (1st to 99th percentile) and is at least
+// 3.5 hours wide. Every viewer, place and view of a date sees the same colours; the key in the picture gives the times.
+const KEY_NARROWEST = 210;
+const dayDomainCache = new Map();
+function dayDomain(dayUtcMs = state.dayUtcMs, event = state.event, clocks = state.clocks) {
+  const key = `${dayUtcMs}|${event}|${clocks}`;
+  if (dayDomainCache.has(key)) return dayDomainCache.get(key);
+  const values = [];
+  for (const place of labelCandidates) { const result = placeEvent(place, dayUtcMs, event, clocks); if (!result.polar) values.push(eveningEquivalent(result.minutes, event)); }
+  values.sort((a, b) => a - b);
+  let domain = [d3.quantileSorted(values, 0.01), d3.quantileSorted(values, 0.99)];
+  if (domain[1] - domain[0] < KEY_NARROWEST) { const middle = (domain[0] + domain[1]) / 2; domain = [middle - KEY_NARROWEST / 2, middle + KEY_NARROWEST / 2]; }
+  dayDomainCache.set(key, domain);
+  return domain;
+}
+// Whether the view reaches latitudes where the sun does not rise or does not set that day.
+function polarFlagsFor(projection, height, dayUtcMs) {
+  const north = projection.invert([0, 0])[1], south = projection.invert([0, height])[1];
+  const declination = solarDeclinationAndEquationOfTime(dayUtcMs + DAY_MS / 2).declination / DEG;
+  const nightLimit = 90 - Math.abs(declination) + 0.833, dayLimit = 90 - Math.abs(declination) - 0.833;
+  const winterNorth = declination < 0;
+  return { polarNight: winterNorth ? north > nightLimit : south < -nightLimit, midnightSun: winterNorth ? south < -dayLimit : north > dayLimit };
+}
+function pictureFor(dayUtcMs, event, clocks, domain) {
+  return { sun: sunUniforms(dayUtcMs), direction: event === 'sunset' ? 1 : -1, offsets: zoneOffsets(dayUtcMs, clocks), domain };
+}
+
+// ================================================================ State, kept in the link
+const todayUtc = (() => { const now = new Date(); return Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()); })();
+const params = new URLSearchParams(location.search);
+const state = {
+  dayUtcMs: params.get('date') ? Date.parse(params.get('date') + 'T00:00:00Z') : todayUtc,
+  event: params.get('show') === 'sunrise' ? 'sunrise' : 'sunset',
+  clocks: ['winter-time', 'summer-time'].includes(params.get('clocks')) ? params.get('clocks') : 'as-they-are',
+  place: null, playing: false,
+};
+function nearestPlace(latitude, longitude, withinKm) {
+  let best = null, bestKm = withinKm;
+  for (const place of places) {
+    if (Math.abs(place.lat - latitude) > withinKm / 111) continue;
+    const km = 111 * Math.hypot(place.lat - latitude, (place.lon - longitude) * Math.cos(latitude * DEG));
+    if (km < bestKm) { best = place; bestKm = km; }
+  }
+  return best;
+}
+const placePhrase = place => place.point ? place.name : `in ${place.name}`;
+function pointPlace(latitude, longitude) {
+  const near = nearestPlace(latitude, longitude, 60);
+  return { name: near ? `near ${near.name}` : `at ${Math.abs(latitude).toFixed(1)}° ${latitude >= 0 ? 'N' : 'S'}, ${Math.abs(longitude).toFixed(1)}° ${longitude >= 0 ? 'E' : 'W'}`, plainName: '',
+    lat: latitude, lon: longitude, timeZone: zoneNames[zoneIndexAt(longitude, latitude)], country: '', population: 0, point: true };
+}
+const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const TIME_ZONE_HOMES = {
+  'Europe/Amsterdam': ['Rotterdam', 'NL'], 'Europe/London': ['London', 'GB'], 'Europe/Paris': ['Paris', 'FR'], 'Europe/Berlin': ['Berlin', 'DE'],
+  'Europe/Athens': ['Athens', 'GR'], 'America/New_York': ['New York City', 'US'], 'America/Los_Angeles': ['San Francisco', 'US'], 'America/Chicago': ['Chicago', 'US'],
+  'America/Toronto': ['Toronto', 'CA'], 'Australia/Sydney': ['Sydney', 'AU'], 'Australia/Melbourne': ['Melbourne', 'AU'], 'Australia/Perth': ['Perth', 'AU'],
+  'Pacific/Auckland': ['Auckland', 'NZ'], 'Asia/Singapore': ['Singapore', 'SG'], 'Asia/Tokyo': ['Tokyo', 'JP'], 'Asia/Hong_Kong': ['Hong Kong', 'HK'],
+  'Africa/Johannesburg': ['Cape Town', 'ZA'], 'America/Santiago': ['Santiago', 'CL'],
+};
+const timeZoneHome = TIME_ZONE_HOMES[browserZone] && searchOrder.find(c => c.name === TIME_ZONE_HOMES[browserZone][0] && c.country === TIME_ZONE_HOMES[browserZone][1]);
+state.place = (params.get('point') && pointPlace(...params.get('point').split(',').map(Number)))
+  || (params.get('place') && searchOrder.find(c => c.searchNames.includes(plainName(params.get('place')))))
+  || timeZoneHome
+  || places.filter(c => c.timeZone === browserZone).sort((a, b) => b.capital - a.capital || b.population - a.population)[0]
+  || places.find(c => c.name === 'London');
+function shareUrl() {
+  const next = new URLSearchParams();
+  if (state.place.point) next.set('point', `${state.place.lat.toFixed(3)},${state.place.lon.toFixed(3)}`); else next.set('place', state.place.name);
+  next.set('date', new Date(state.dayUtcMs).toISOString().slice(0, 10));
+  if (state.event === 'sunrise') next.set('show', 'sunrise');
+  if (state.clocks !== 'as-they-are') next.set('clocks', state.clocks);
+  if (mainView) {
+    const [longitude, latitude] = mainView.projection.invert([mainView.width / 2, mainView.height / 2]);
+    next.set('map', `${latitude.toFixed(2)},${longitude.toFixed(2)},${Math.log2(mainView.projection.scale() * 2 * Math.PI / 256).toFixed(2)}`);
+  }
+  return `${location.origin}${location.pathname}?${next}`;
+}
+let urlTimer;
+function writeUrlSoon() { clearTimeout(urlTimer); if (!state.playing) urlTimer = setTimeout(() => history.replaceState(null, '', shareUrl()), 400); }
+
+// ================================================================ Labels
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const TIER_TYPE = [{ name: 13, time: 21, space: 14 }, { name: 12, time: 18, space: 11 }, { name: 11, time: 15.5, space: 9 }, { name: 15, time: 32, space: 10 }];
+const LABEL_ANCHORS = ['above', 'below']; // every place has a dot; its time and name sit above it, or below when crowded
+const labelWidths = new Map();
+function labelBox(context, place, projection, scale, tier, anchor = 'centre') {
+  const type = TIER_TYPE[tier], widthKey = `${place.name}|${tier}|${scale}`;
+  if (!labelWidths.has(widthKey)) { context.font = `600 ${type.name * scale}px Barlow`; labelWidths.set(widthKey, Math.max(context.measureText(place.name).width, type.time * 2.3 * scale)); }
+  const width = labelWidths.get(widthKey);
+  const [x, y] = projection([place.lon, place.lat]);
+  const height = (type.name + type.time * 0.95) * scale, gap = 5 * scale;
+  const cx = x + (anchor === 'right' ? width / 2 + gap : anchor === 'left' ? -width / 2 - gap : 0);
+  const cy = y + (anchor === 'below' ? height / 2 + gap * 0.6 : anchor === 'above' ? -height / 2 - gap * 0.6 : 0);
+  return { x, y, cx, cy, anchor, box: [cx - width / 2, cy - height / 2, cx + width / 2, cy + height / 2], space: type.space * scale };
+}
+// Strict priority, across the whole world: each place, biggest first, takes the lowest half zoom level at which its label
+// clears every bigger place's label at that level (whether or not the bigger one is shown yet), so a small place can
+// never take a big place's room. A label shown at one level stays at every closer level, so zooming in only adds places.
+// Big and regional cities may sit beside their dot when centred does not fit; small places sit centred or not at all.
+const LABEL_STEP = 0.5, LABEL_LEVELS = d3.range(0, 10.01, LABEL_STEP);
+const boxesOverlap = (a, b) => a.box[0] - a.space < b.box[2] + b.space && a.box[2] + a.space > b.box[0] - b.space && a.box[1] - a.space < b.box[3] + b.space && a.box[3] + a.space > b.box[1] - b.space;
+const labelPlacementCache = new Map(), labelSets = new Map();
+function labelPlacements(scale) {
+  if (labelPlacementCache.has(scale)) return labelPlacementCache.get(scale);
+  const context = labelCanvas.getContext('2d'), cell = 160;
+  const projections = LABEL_LEVELS.map(level => d3.geoMercator().scale(256 * 2 ** level / (2 * Math.PI)).translate([0, 0]));
+  const grids = LABEL_LEVELS.map(() => new Map()), placements = [];
+  const cellsOf = item => { const out = []; for (let cx = Math.floor((item.box[0] - item.space) / cell); cx <= Math.floor((item.box[2] + item.space) / cell); cx++) for (let cy = Math.floor((item.box[1] - item.space) / cell); cy <= Math.floor((item.box[3] + item.space) / cell); cy++) out.push(cx * 65536 + cy); return out; };
+  for (const place of labelCandidates) {
+    if (Math.abs(place.lat) > 80) continue;
+    const anchors = LABEL_ANCHORS, firstLevel = [0, 2, 3.5][place.tier] / LABEL_STEP;
+    let found = null;
+    for (let level = firstLevel; level < LABEL_LEVELS.length && !found; level++) for (const anchor of anchors) {
+      const item = { space: 0, ...labelBox(context, place, projections[level], scale, place.tier, anchor) };
+      if (cellsOf(item).some(k => (grids[level].get(k) || []).some(other => boxesOverlap(item, other)))) continue;
+      found = { level, anchor }; break;
+    }
+    if (!found) continue;
+    placements.push({ place, tier: place.tier, level: LABEL_LEVELS[found.level], anchor: found.anchor });
+    for (let level = 0; level < LABEL_LEVELS.length; level++) {
+      const item = labelBox(context, place, projections[level], scale, place.tier, found.anchor);
+      for (const k of cellsOf(item)) { if (!grids[level].has(k)) grids[level].set(k, []); grids[level].get(k).push(item); }
+    }
+  }
+  labelPlacementCache.set(scale, placements);
+  return placements;
+}
+function labelSetFor(zoomLevel, scale) {
+  const level = Math.max(0, Math.min(LABEL_LEVELS.at(-1), Math.floor(zoomLevel / LABEL_STEP) * LABEL_STEP)), key = `${level}|${scale}`;
+  if (!labelSets.has(key)) labelSets.set(key, labelPlacements(scale).filter(placement => placement.level <= level));
+  return labelSets.get(key);
+}
+// What is drawn now: the chosen place first and largest, then the level's labels wholly on screen and clear of it and of
+// the map's own buttons.
+const ringRadius = scale => 8 * scale;
+function visibleLabels(context, projection, width, height, scale, selected, avoid) {
+  const zoomLevel = Math.log2(projection.scale() * 2 * Math.PI / 256);
+  const blocked = avoid.map(box => ({ box, space: 0 }));
+  const inside = candidate => candidate.box[0] >= 4 && candidate.box[1] >= 4 && candidate.box[2] <= width - 4 && candidate.box[3] <= height - 4;
+  const out = [];
+  if (selected) {
+    const chosen = LABEL_ANCHORS.map(anchor => ({ place: selected, tier: 3, ...labelBox(context, selected, projection, scale, 3, anchor), space: 6 * scale })).find(inside)
+      || { place: selected, tier: 3, ...labelBox(context, selected, projection, scale, 3, 'above'), space: 6 * scale };
+    out.push(chosen);
+  }
+  for (const item of labelSetFor(zoomLevel, scale)) {
+    if (selected && item.place.name === selected.name && Math.abs(item.place.lat - selected.lat) < 0.05) continue;
+    const fits = candidate => inside(candidate) && !blocked.some(other => boxesOverlap(candidate, other)) && !out.some(other => boxesOverlap(candidate, other));
+    const shown = [item.anchor, ...LABEL_ANCHORS.filter(anchor => anchor !== item.anchor)].map(anchor => ({ ...item, ...labelBox(context, item.place, projection, scale, item.tier, anchor), space: 0 })).find(fits);
+    if (shown) out.push(shown);
+  }
+  return out;
+}
+function drawChosenPlace(context, projection, place, scale) {
+  if (!place) return;
+  const [x, y] = projection([place.lon, place.lat]), r = ringRadius(scale);
+  context.beginPath(); context.arc(x, y, r, 0, 2 * Math.PI);
+  context.lineWidth = 5 * scale; context.strokeStyle = '#1b1f2e99'; context.stroke();
+  context.lineWidth = 2.5 * scale; context.strokeStyle = '#ffffff'; context.stroke();
+}
+// The share pictures choose their labels the same way, for their own frame.
+function layoutLabels(context, projection, width, height, scale, selected, avoid, maximum) {
+  return visibleLabels(context, projection, width, height, scale, selected, avoid).filter(item => item.box[0] > 4 && item.box[1] > 4 && item.box[2] < width - 4 && item.box[3] < height - 4).slice(0, maximum);
+}
+function drawLabels(context, projection, layout, scale, dayUtcMs, event, clocks, selected) {
+  context.textAlign = 'center'; context.lineJoin = 'round'; context.textBaseline = 'alphabetic';
+  for (const { place, tier, anchor = 'above' } of layout) {
+    const type = TIER_TYPE[tier];
+    const { x, y, cx, box } = labelBox(context, place, projection, scale, tier, anchor);
+    const time = eventWords(placeEvent(place, dayUtcMs, event, clocks));
+    const timeBaseline = box[1] + type.time * 0.8 * scale, nameBaseline = timeBaseline + type.name * 1.05 * scale;
+    context.beginPath(); context.arc(x, y, (tier === 3 ? 3.2 : 2.4) * scale, 0, 2 * Math.PI);
+    context.fillStyle = '#ffffff'; context.lineWidth = 2 * scale; context.strokeStyle = '#1b1f2ecc'; context.stroke(); context.fill();
+    context.strokeStyle = '#1b1f2ed9'; context.fillStyle = '#ffffff'; context.lineWidth = (tier === 3 ? 4 : 3) * scale;
+    context.font = `800 ${type.time * scale}px "Barlow Condensed"`; context.strokeText(time, cx, timeBaseline); context.fillText(time, cx, timeBaseline);
+    context.font = `600 ${type.name * scale}px Barlow`; context.strokeText(place.name, cx, nameBaseline); context.fillText(place.name, cx, nameBaseline);
+  }
+}
+
+// ================================================================ Time zone names, large and faint, inside each zone
+// One source for the whole world: the IANA time zone database's own abbreviations (data/zone-names.json), which it keeps
+// only where they are in real use. Where it has none it writes the offset, shown here as UTC+5.
+const ZONE_NAME_OVERRIDES = { 'Asia/Jerusalem': { 120: 'EET', 180: 'EEST' } };
+const offsetName = offset => offset === 0 ? 'UTC' : `UTC${offset > 0 ? '+' : '−'}${Math.floor(Math.abs(offset) / 60)}${Math.abs(offset) % 60 ? ':' + String(Math.abs(offset) % 60).padStart(2, '0') : ''}`;
+function zoneNameFor(timeZone, offset) {
+  const name = (ZONE_NAME_OVERRIDES[timeZone] || zoneAbbreviations[timeZone] || {})[offset];
+  return name && /^[A-Z]{2,5}$/.test(name) ? name : offsetName(offset);
+}
+// Zone names are fixed to the world and sit where the zone's people live: each populated part of a zone gets an anchor
+// with room for the name, as close as possible to that part's population centre. Empty land gets no name.
+const ZONE_REFERENCE_ZOOM = 4, ZONE_CELL = 12;
+const zoneGrid = (() => {
+  const projection = d3.geoMercator().scale(256 * 2 ** ZONE_REFERENCE_ZOOM / (2 * Math.PI)).translate([0, 0]);
+  const top = projection([0, 78])[1], bottom = projection([0, -58])[1], left = projection([-180, 0])[0];
+  const columns = Math.ceil(-2 * left / ZONE_CELL), rows = Math.ceil((bottom - top) / ZONE_CELL);
+  const zones = new Uint16Array(columns * rows);
+  for (let row = 0; row < rows; row++) for (let column = 0; column < columns; column++) {
+    const [longitude, latitude] = projection.invert([left + (column + 0.5) * ZONE_CELL, top + (row + 0.5) * ZONE_CELL]);
+    const zone = zoneIndexAt(longitude, latitude);
+    zones[row * columns + column] = seaZone[zone] ? 0 : zone;
+  }
+  const population = new Float64Array(columns * rows);
+  for (const place of places) {
+    const [x, y] = projection([place.lon, place.lat]), column = Math.floor((x - left) / ZONE_CELL), row = Math.floor((y - top) / ZONE_CELL);
+    if (column >= 0 && column < columns && row >= 0 && row < rows) population[row * columns + column] += place.population;
+  }
+  return { projection, top, left, columns, rows, zones, population, present: [...new Set(zones)].filter(Boolean) };
+})();
+let zoneAnchors = [], zoneAnchorsKey = '';
+function updateZoneAnchors(dayUtcMs, clocks) {
+  const nameOfZone = new Map();
+  for (const zone of zoneGrid.present) nameOfZone.set(zone, zoneNameFor(zoneNames[zone], clockOffset(zoneNames[zone], dayUtcMs, clocks)));
+  const key = [...nameOfZone.values()].join('|');
+  if (key === zoneAnchorsKey) return;
+  zoneAnchorsKey = key;
+  const { columns, rows, zones } = zoneGrid, names = Array.from(zones, zone => zone ? nameOfZone.get(zone) : null);
+  const depth = new Int16Array(columns * rows), queue = [];
+  const neighbours = i => { const row = Math.floor(i / columns), column = i % columns; return [column > 0 ? i - 1 : -1, column < columns - 1 ? i + 1 : -1, row > 0 ? i - columns : -1, row < rows - 1 ? i + columns : -1]; };
+  for (let i = 0; i < names.length; i++) if (names[i] && neighbours(i).some(j => j < 0 || names[j] !== names[i])) { depth[i] = 1; queue.push(i); }
+  for (let head = 0; head < queue.length; head++) for (const j of neighbours(queue[head])) if (j >= 0 && names[j] === names[queue[head]] && !depth[j]) { depth[j] = depth[queue[head]] + 1; queue.push(j); }
+  const seen = new Uint8Array(names.length), context = labelCanvas.getContext('2d');
+  context.font = `800 10px "Barlow Condensed"`;
+  zoneAnchors = [];
+  const ZONE_TILE = 15;
+  for (let start = 0; start < names.length; start++) {
+    if (!names[start] || seen[start]) continue;
+    const area = [start]; seen[start] = 1;
+    for (let head = 0; head < area.length; head++) for (const j of neighbours(area[head])) if (j >= 0 && !seen[j] && names[j] === names[start]) { seen[j] = 1; area.push(j); }
+    if (area.length < 12) continue;
+    // A big zone has an anchor in each populated part of it, so its name shows whichever part is on screen.
+    const tiles = d3.group(area, i => `${Math.floor((i % columns) / ZONE_TILE)},${Math.floor(Math.floor(i / columns) / ZONE_TILE)}`);
+    for (const cells of tiles.values()) {
+      const people = d3.sum(cells, i => zoneGrid.population[i]);
+      if (people < 300000) continue;
+      const centreX = d3.sum(cells, i => zoneGrid.population[i] * (i % columns)) / people, centreY = d3.sum(cells, i => zoneGrid.population[i] * Math.floor(i / columns)) / people;
+      const roomy = cells.filter(i => depth[i] >= 3);
+      if (!roomy.length) continue;
+      const best = d3.least(roomy, i => Math.hypot(i % columns - centreX, Math.floor(i / columns) - centreY) - 0.5 * Math.min(depth[i], 8));
+      const [longitude, latitude] = zoneGrid.projection.invert([zoneGrid.left + (best % columns + 0.5) * ZONE_CELL, zoneGrid.top + (Math.floor(best / columns) + 0.5) * ZONE_CELL]);
+      zoneAnchors.push({ text: names[start], longitude, latitude, people, room: depth[best] * ZONE_CELL, widthPerPixel: context.measureText(names[start]).width / 10 });
+    }
+  }
+  zoneAnchors.sort((a, b) => b.people - a.people);
+}
+function drawZoneLabels(context, projection, width, height, scale, dayUtcMs, event, clocks, domain, keepClear = []) {
+  const growth = projection.scale() / zoneGrid.projection.scale(), drawn = [];
+  context.save(); context.textAlign = 'center'; context.textBaseline = 'middle';
+  for (const anchor of zoneAnchors) {
+    const room = anchor.room * growth, size = Math.min(64 * scale, room * 0.95, room * 1.8 / anchor.widthPerPixel);
+    if (size < 18 * scale) continue;
+    const [x, y] = projection([anchor.longitude, anchor.latitude]), half = size * anchor.widthPerPixel / 2;
+    const box = [x - half, y - size * 0.4, x + half, y + size * 0.4];
+    if (box[0] < 0 || box[1] < 0 || box[2] > width || box[3] > height) continue;
+    if (keepClear.some(b => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) continue;
+    if (drawn.some(d => (box[0] < d.box[2] + 20 && box[2] > d.box[0] - 20 && box[1] < d.box[3] + 20 && box[3] > d.box[1] - 20) || (d.text === anchor.text && Math.hypot(d.x - x, d.y - y) < 0.45 * Math.max(width, height)))) continue;
+    drawn.push({ box, text: anchor.text, x, y });
+    const zone = zoneNames[zoneIndexAt(anchor.longitude, anchor.latitude)];
+    const result = placeEvent({ lat: anchor.latitude, lon: anchor.longitude, timeZone: zone }, dayUtcMs, event, clocks);
+    const underneath = d3.hsl(result.polar ? (result.polar === 'day' ? '#fffbea' : '#2e3448') : rampColourAt(eveningEquivalent(result.minutes, event), domain));
+    context.fillStyle = underneath.l > 0.62 ? '#1b1f2e2e' : '#ffffff30';
+    context.font = `800 ${size}px "Barlow Condensed"`;
+    if ('letterSpacing' in context) context.letterSpacing = `${size * 0.04}px`;
+    context.fillText(anchor.text, x, y);
+  }
+  context.restore();
+}
+
+// ================================================================ The main map
+const mapArea = document.getElementById('map-area');
+const glCanvas = document.getElementById('map-gl'), labelCanvas = document.getElementById('map-labels');
+const mainRenderer = createRenderer(glCanvas);
+const imageRenderer = createRenderer(document.createElement('canvas'));
+const tooltip = document.getElementById('tooltip');
+const worldBounds = [[-180, -56], [180, 76]];
+const continentOf = timeZone => ({ Europe: 'Europe', America: 'Americas', Asia: 'Asia', Africa: 'Africa', Australia: 'Australia', Pacific: 'Australia', Atlantic: 'Europe', Arctic: 'Europe', Indian: 'Asia' })[timeZone.split('/')[0]] || 'World';
+const regionBounds = { Europe: [[-11, 35], [33, 70]], Americas: [[-125, 10], [-62, 55]], Asia: [[60, 5], [145, 55]], Africa: [[-18, -35], [50, 37]], Australia: [[112, -44], [179, -10]], World: worldBounds };
+let mainView = null, baseProjection = null, transform = d3.zoomIdentity, layout = [], domainNow = null, domainTarget = null, polarFlags = { polarNight: false, midnightSun: false };
+let gestureActive = false, viewName = 'region';
+function mapSize() { const r = mapArea.getBoundingClientRect(); return [Math.max(1, Math.round(r.width)), Math.max(1, Math.round(r.height))]; }
+function currentProjection() {
+  const [tx, ty] = baseProjection.translate();
+  return d3.geoMercator().scale(baseProjection.scale() * transform.k).translate([tx * transform.k + transform.x, ty * transform.k + transform.y]);
+}
+// Fit a region, allowing a little of its north and south to fall off a wide, short screen.
+function fitBounds(bounds, width, height) {
+  const byHeight = d3.geoMercator().fitExtent([[16, 16], [width - 16, height - 16]], { type: 'MultiPoint', coordinates: bounds });
+  const byWidth = d3.geoMercator().fitWidth(width - 32, { type: 'MultiPoint', coordinates: bounds });
+  const scale = Math.min(byWidth.scale(), byHeight.scale() * 1.3);
+  const projection = d3.geoMercator().scale(scale).translate([0, 0]);
+  const [cx, cy] = projection([(bounds[0][0] + bounds[1][0]) / 2, 0]), middle = projection([0, (bounds[0][1] + bounds[1][1]) / 2]);
+  return projection.translate([width / 2 - cx, height / 2 - middle[1]]);
+}
+function setView(name, centreOn) {
+  viewName = name;
+  const continent = continentOf(state.place.timeZone);
+  document.getElementById('view-region').textContent = continent === 'World' ? 'Region' : continent;
+  document.getElementById('view-world').setAttribute('aria-pressed', name === 'world');
+  document.getElementById('view-region').setAttribute('aria-pressed', name === 'region');
+  const [width, height] = mapSize();
+  baseProjection = fitBounds(name === 'world' ? worldBounds : regionBounds[continent], width, height);
+  if (centreOn) { const [x, y] = baseProjection([centreOn.lon, centreOn.lat]); const [tx, ty] = baseProjection.translate(); baseProjection.translate([tx + width / 2 - x, ty + height * 0.55 - y]); }
+  transform = d3.zoomIdentity;
+  d3.select(labelCanvas).call(zoom.transform, d3.zoomIdentity);
+  settleView();
+}
+function setViewFromLink(latitude, longitude, zoomLevel) {
+  viewName = 'moved';
+  const [width, height] = mapSize();
+  baseProjection = d3.geoMercator().scale(256 * 2 ** zoomLevel / (2 * Math.PI)).translate([0, 0]);
+  const [x, y] = baseProjection([longitude, latitude]);
+  baseProjection.translate([width / 2 - x, height / 2 - y]);
+  document.getElementById('view-region').textContent = continentOf(state.place.timeZone);
+  settleView();
+}
+function avoidRects() {
+  const area = mapArea.getBoundingClientRect();
+  return ['map-buttons', 'map-mode', 'attribution'].map(id => document.getElementById(id).getBoundingClientRect()).filter(r => r.width)
+    .map(r => [r.left - area.left - 6, r.top - area.top - 6, r.right - area.left + 6, r.bottom - area.top + 6]);
+}
+// After a pan or zoom has stopped: only the canvas size and the link change. Labels and colours belong to places and days.
+function settleView() {
+  const [width, height] = mapSize(), dpr = devicePixelRatio || 1;
+  mainView = { width, height, pixelRatio: dpr, projection: currentProjection() };
+  if (labelCanvas.width !== width * dpr || labelCanvas.height !== height * dpr) { labelCanvas.width = width * dpr; labelCanvas.height = height * dpr; }
+  if (!domainTarget) refitColours(true);
+  render();
+  writeUrlSoon();
+}
+function refitColours(immediately) {
+  domainTarget = dayDomain(state.dayUtcMs, state.event, state.clocks);
+  updateZoneAnchors(state.dayUtcMs, state.clocks);
+  if (!domainNow || immediately) domainNow = [...domainTarget];
+}
+let frameRequested = false;
+function render() {
+  if (frameRequested) return;
+  frameRequested = true;
+  requestAnimationFrame(() => {
+    frameRequested = false;
+    // The colour scale glides to its new range rather than jumping.
+    const easing = state.playing ? 0.35 : 0.3;
+    let moving = false;
+    for (const i of [0, 1]) { const gap = domainTarget[i] - domainNow[i]; if (Math.abs(gap) > 0.5) { domainNow[i] += gap * easing; moving = true; } else domainNow[i] = domainTarget[i]; }
+    const projection = currentProjection();
+    const [tx, ty] = projection.translate();
+    mainRenderer.draw({ width: mainView.width, height: mainView.height, pixelRatio: mainView.pixelRatio, scale: projection.scale(), translate: [tx, ty] },
+      pictureFor(state.dayUtcMs, state.event, state.clocks, domainNow));
+    const context = labelCanvas.getContext('2d'), ui = parseFloat(css('--ui')) || 1;
+    context.setTransform(mainView.pixelRatio, 0, 0, mainView.pixelRatio, 0, 0);
+    context.clearRect(0, 0, mainView.width, mainView.height);
+    polarFlags = polarFlagsFor(projection, mainView.height, state.dayUtcMs);
+    layout = visibleLabels(context, projection, mainView.width, mainView.height, ui, state.place, avoidRects());
+    drawZoneLabels(context, projection, mainView.width, mainView.height, ui, state.dayUtcMs, state.event, state.clocks, domainNow, avoidRects());
+    drawLabels(context, projection, layout, ui, state.dayUtcMs, state.event, state.clocks, state.place);
+    drawChosenPlace(context, projection, state.place, ui);
+    writeKey(domainNow);
+    if (moving) render();
+  });
+}
+let settleTimer;
+const zoom = d3.zoom().scaleExtent([0.3, 40])
+  .on('start', event => { if (!event.sourceEvent) return; gestureActive = true; tooltip.hidden = true; labelCanvas.style.cursor = 'grabbing'; })
+  .on('zoom', event => { transform = event.transform; if (event.sourceEvent) { mainView.projection = currentProjection(); render(); } })
+  .on('end', event => {
+    if (!event.sourceEvent) return;
+    labelCanvas.style.cursor = 'grab';
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => {
+      gestureActive = false;
+      viewName = 'moved';
+      document.getElementById('view-world').setAttribute('aria-pressed', false);
+      document.getElementById('view-region').setAttribute('aria-pressed', false);
+      settleView();
+    }, 90);
+  });
+d3.select(labelCanvas).call(zoom).on('dblclick.zoom', null);
+
+labelCanvas.addEventListener('click', event => {
+  if (!mainView) return;
+  const projection = currentProjection();
+  let nearest = null, nearestDistance = 24;
+  for (const { place } of layout) {
+    const [x, y] = projection([place.lon, place.lat]), distance = Math.hypot(x - event.offsetX, y - event.offsetY);
+    if (distance < nearestDistance) { nearest = place; nearestDistance = distance; }
+  }
+  if (!nearest) {
+    const [longitude, latitude] = projection.invert([event.offsetX, event.offsetY]);
+    const wrapped = ((longitude + 540) % 360) - 180;
+    if (!isLandAt(wrapped, latitude)) return;
+    nearest = pointPlace(latitude, wrapped);
+  }
+  selectPlace(nearest);
+});
+labelCanvas.addEventListener('pointermove', event => {
+  if (gestureActive || !mainView || event.pointerType === 'touch') return;
+  const [longitude, latitude] = currentProjection().invert([event.offsetX, event.offsetY]);
+  const wrapped = ((longitude + 540) % 360) - 180;
+  if (!isLandAt(wrapped, latitude)) { tooltip.hidden = true; return; }
+  const result = placeEvent({ lat: latitude, lon: wrapped, timeZone: zoneNames[zoneIndexAt(wrapped, latitude)] }, state.dayUtcMs, state.event, state.clocks);
+  tooltip.innerHTML = result.polar ? `<b>${eventWords(result)}</b>` : `${state.event === 'sunset' ? 'Sunset' : 'Sunrise'} <b>${formatClock(result.minutes)}</b>`;
+  tooltip.hidden = false;
+  tooltip.style.left = `${Math.min(event.offsetX + 14, mainView.width - tooltip.offsetWidth - 4)}px`;
+  tooltip.style.top = `${event.offsetY + 14}px`;
+});
+labelCanvas.addEventListener('pointerleave', () => { tooltip.hidden = true; });
+
+// ================================================================ The colour key on the map
+function writeKey(domain, target = document.getElementById('map-key')) {
+  const bar = target.querySelector('.map-key-bar'), ticks = target.querySelector('.map-key-ticks');
+  target.querySelector('.map-key-caption').textContent = state.event === 'sunset' ? 'Sunset time' : 'Sunrise time';
+  // Times always run left to right. Sunrise colours run light to dark: an early sunrise is a light morning.
+  const earliest = Math.min(localFromEvening(domain[0], state.event), localFromEvening(domain[1], state.event));
+  const latest = Math.max(localFromEvening(domain[0], state.event), localFromEvening(domain[1], state.event));
+  const stops = d3.range(0, 1.0001, 0.1).map(f => `${rampColourAt(eveningEquivalent(earliest + f * (latest - earliest), state.event), domain)} ${f * 100}%`);
+  bar.style.background = `linear-gradient(to right, ${stops.join(', ')})`;
+  const span = latest - earliest, pixelsPerMinute = bar.clientWidth / span, step = [30, 60, 120].find(minutes => minutes * pixelsPerMinute >= 48) || 180;
+  const tickTimes = d3.range(Math.ceil(earliest / step) * step, latest + 0.01, step);
+  const key = `${Math.round(earliest)}|${Math.round(latest)}`;
+  if (ticks.dataset.key !== key) {
+    ticks.dataset.key = key;
+    ticks.innerHTML = tickTimes.filter(t => (t - earliest) / span > 0.06 && (latest - t) / span > 0.06)
+      .map(t => `<span style="left:${(t - earliest) / span * 100}%">${formatClock(t)}</span>`).join('');
+  }
+  if (target.id === 'map-key') {
+    const marker = document.getElementById('map-key-marker'), result = placeEvent(state.place, state.dayUtcMs, state.event, state.clocks);
+    marker.hidden = !!result.polar;
+    if (!result.polar) marker.style.left = `${Math.max(0, Math.min(1, (result.minutes - earliest) / span)) * 100}%`;
+    document.getElementById('key-polar-night').hidden = !polarFlags.polarNight;
+    document.getElementById('key-midnight-sun').hidden = !polarFlags.midnightSun;
+  }
+}
+
+// ================================================================ Key dates: a place's clock changes and solstices
+function keyDates(place, year) {
+  const count = daysInYear(year), offsets = dailyOffsets(place.timeZone, year);
+  const days = d3.range(count).map(i => Date.UTC(year, 0, 1 + i));
+  const declinations = days.map(day => solarDeclinationAndEquationOfTime(day + DAY_MS / 2).declination);
+  const result = [];
+  for (let i = 1; i < count; i++) {
+    if (offsets[i] !== offsets[i - 1]) result.push({ day: days[i], label: offsets[i] > offsets[i - 1] ? 'Clocks go forward' : 'Clocks go back', short: offsets[i] > offsets[i - 1] ? 'Clocks forward' : 'Clocks back', clockChange: true });
+  }
+  const north = place.lat >= 0, maximum = d3.maxIndex(declinations), minimum = d3.minIndex(declinations);
+  result.push({ day: days[north ? maximum : minimum], label: 'Longest day', short: 'Longest day' });
+  result.push({ day: days[north ? minimum : maximum], label: 'Shortest day', short: 'Shortest day' });
+  if (result.length < 4) for (let i = 1; i < count; i++) {
+    if (declinations[i - 1] < 0 && declinations[i] >= 0) result.push({ day: days[i], label: 'March equinox', short: 'Equinox' });
+    if (declinations[i - 1] > 0 && declinations[i] <= 0) result.push({ day: days[i], label: 'September equinox', short: 'Equinox' });
+  }
+  return result.sort((a, b) => a.day - b.day);
+}
+// ================================================================ The year chart: drag along it to choose a day
+const chartCanvas = document.getElementById('year-chart'), chartTooltip = document.getElementById('chart-tooltip');
+let chartCache = null;
+function chartData() {
+  const year = yearOf(state.dayUtcMs), key = `${state.place.name}|${state.place.lat}|${year}|${state.clocks}`;
+  if (!chartCache || chartCache.key !== key) {
+    const days = d3.range(daysInYear(year)).map(i => {
+      const day = Date.UTC(year, 0, 1 + i);
+      return { day, sunrise: placeEvent(state.place, day, 'sunrise', state.clocks), sunset: placeEvent(state.place, day, 'sunset', state.clocks),
+        sunriseNow: placeEvent(state.place, day, 'sunrise', 'as-they-are'), sunsetNow: placeEvent(state.place, day, 'sunset', 'as-they-are') };
+    });
+    chartCache = { key, year, days, keyDates: keyDates(state.place, year) };
+  }
+  return chartCache;
+}
+function drawChart() {
+  const { days, keyDates: marks, year } = chartData();
+  const rect = chartCanvas.getBoundingClientRect();
+  if (!rect.width) return;
+  const dpr = devicePixelRatio || 1, ui = parseFloat(css('--ui')) || 1;
+  if (chartCanvas.width !== Math.round(rect.width * dpr) || chartCanvas.height !== Math.round(rect.height * dpr)) { chartCanvas.width = Math.round(rect.width * dpr); chartCanvas.height = Math.round(rect.height * dpr); }
+  const context = chartCanvas.getContext('2d');
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const width = rect.width, height = rect.height, top = 4 * ui, bottom = height - 14 * ui, left = 38 * ui;
+  context.clearRect(0, 0, width, height);
+  const which = state.event, compare = state.clocks !== 'as-they-are' ? which + 'Now' : null;
+  const times = days.flatMap(d => [d[which], compare ? d[compare] : null]).filter(r => r && !r.polar).map(r => r.minutes);
+  const low = d3.min(times) ?? 0, high = d3.max(times) ?? 1440, pad = Math.max(8, (high - low) * 0.1);
+  const x = d3.scaleLinear().domain([0, days.length]).range([left, width]);
+  const y = d3.scaleLinear().domain([low - pad, high + pad]).range([bottom, top]);
+  const columnWidth = (width - left) / days.length;
+  context.globalAlpha = 0.85;
+  days.forEach((d, i) => {
+    const result = d[which];
+    if (result.polar === 'night') return;
+    if (result.polar === 'day') { context.fillStyle = '#fffbea'; context.fillRect(x(i), top, columnWidth + 0.6, bottom - top); return; }
+    context.fillStyle = '#f3c77a';
+    context.fillRect(x(i), y(result.minutes), columnWidth + 0.6, bottom - y(result.minutes));
+  });
+  context.globalAlpha = 1;
+  if (compare) {
+    context.setLineDash([3, 3]); context.strokeStyle = css('--text'); context.lineWidth = 1.3;
+    context.beginPath();
+    days.forEach((d, i) => { if (d[compare].polar) return; const px = x(i + 0.5), py = y(d[compare].minutes); i && !days[i - 1][compare].polar ? context.lineTo(px, py) : context.moveTo(px, py); });
+    context.stroke(); context.setLineDash([]);
+  }
+  context.font = `400 ${11 * ui}px Barlow`; context.fillStyle = css('--muted'); context.textAlign = 'right';
+  context.textBaseline = 'top'; context.fillText(formatClock(high), left - 6, top);
+  context.textBaseline = 'bottom'; context.fillText(formatClock(low), left - 6, bottom);
+  context.textAlign = 'center'; context.textBaseline = 'alphabetic';
+  const monthLetter = new Intl.DateTimeFormat('en-GB', { month: width < 500 ? 'narrow' : 'short', timeZone: 'UTC' });
+  for (let month = 0; month < 12; month++) {
+    const from = (Date.UTC(year, month, 1) - days[0].day) / DAY_MS, to = (Date.UTC(year, month + 1, 1) - days[0].day) / DAY_MS;
+    context.fillText(monthLetter.format(Date.UTC(year, month, 1)), x((from + to) / 2), height - 1);
+  }
+  context.fillStyle = css('--muted');
+  for (const mark of marks) { const px = x((mark.day - days[0].day) / DAY_MS + 0.5); context.fillRect(Math.round(px), bottom, 1, 4 * ui); }
+  const selectedIndex = (state.dayUtcMs - days[0].day) / DAY_MS, selectedX = x(selectedIndex + 0.5);
+  context.fillStyle = css('--text'); context.fillRect(selectedX - 1, top, 2, bottom - top);
+  const selected = days[selectedIndex];
+  if (selected && !selected[which].polar) {
+    context.beginPath(); context.arc(selectedX, y(selected[which].minutes), 4.5 * ui, 0, 2 * Math.PI);
+    context.fillStyle = '#ffffff'; context.fill(); context.lineWidth = 2; context.strokeStyle = SEA; context.stroke();
+  }
+  chartCanvas._scale = { x, days };
+}
+const dayIndexFromChartEvent = event => { const { x, days } = chartCanvas._scale; return Math.max(0, Math.min(days.length - 1, Math.floor(x.invert(event.offsetX)))); };
+let chartDragging = false;
+chartCanvas.addEventListener('pointerdown', event => { chartDragging = true; chartTooltip.hidden = true; chartCanvas.setPointerCapture(event.pointerId); stopPlaying(); setDay(chartCanvas._scale.days[dayIndexFromChartEvent(event)].day); });
+chartCanvas.addEventListener('pointermove', event => {
+  if (!chartCanvas._scale) return;
+  const d = chartCanvas._scale.days[dayIndexFromChartEvent(event)];
+  if (chartDragging) { setDay(d.day); return; }
+  if (event.pointerType === 'touch') return;
+  chartTooltip.innerHTML = `<b>${shortDayMonth.format(d.day)}</b> · Sunrise ${eventWords(d.sunrise)} · Sunset ${eventWords(d.sunset)}`;
+  chartTooltip.hidden = false;
+  const half = chartTooltip.offsetWidth / 2;
+  chartTooltip.style.left = `${Math.max(half, Math.min(chartCanvas.clientWidth - half, event.offsetX))}px`;
+});
+chartCanvas.addEventListener('pointerleave', () => { chartTooltip.hidden = true; });
+chartCanvas.addEventListener('pointerup', () => { chartDragging = false; writeUrlSoon(); });
+chartCanvas.addEventListener('keydown', event => {
+  const step = { ArrowLeft: -1, ArrowRight: 1, PageUp: -7, PageDown: 7 }[event.key];
+  if (step) { event.preventDefault(); stopPlaying(); setDay(wrapIntoYear(state.dayUtcMs + step * DAY_MS)); }
+});
+function wrapIntoYear(dayUtcMs) {
+  const year = yearOf(state.dayUtcMs);
+  if (dayUtcMs >= Date.UTC(year + 1, 0, 1)) return Date.UTC(year, 0, 1);
+  if (dayUtcMs < Date.UTC(year, 0, 1)) return Date.UTC(year, 11, 31);
+  return dayUtcMs;
+}
+
+// ================================================================ Words
+function dateFormatter(options) {
+  const parts = new Intl.DateTimeFormat('en-GB', { ...options, timeZone: 'UTC' });
+  return { format: day => { const p = Object.fromEntries(parts.formatToParts(day).map(part => [part.type, part.value])); return [p.weekday, p.day, p.month, p.year].filter(Boolean).join(' '); } };
+}
+const longDate = dateFormatter({ weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+const phoneDate = dateFormatter({ weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+const shortDayMonth = dateFormatter({ weekday: 'short', day: 'numeric', month: 'short' });
+const dayMonth = dateFormatter({ weekday: 'long', day: 'numeric', month: 'long' });
+const clocksWords = { 'winter-time': 'winter time all year', 'summer-time': 'summer time all year' };
+const eventName = () => state.event === 'sunset' ? 'Sunset' : 'Sunrise';
+function clockChangeToday() {
+  if (state.clocks !== 'as-they-are') return null;
+  return chartData().keyDates.find(mark => mark.clockChange && mark.day === state.dayUtcMs) || null;
+}
+function writeAnswer() {
+  const time = document.getElementById('answer-time'), place = document.getElementById('answer-place'), date = document.getElementById('answer-date');
+  {
+    const result = placeEvent(state.place, state.dayUtcMs, state.event, state.clocks);
+    time.hidden = false;
+    time.textContent = eventWords(result);
+    time.classList.toggle('polar', !!result.polar);
+    place.textContent = result.polar ? `No ${state.event} ${placePhrase(state.place)}` : `${eventName()} ${placePhrase(state.place)}`;
+    const change = clockChangeToday();
+    const zone = zoneNameFor(state.place.timeZone, clockOffset(state.place.timeZone, state.dayUtcMs, state.clocks));
+    const narrow = matchMedia('(max-width: 720px)').matches;
+    date.textContent = `${(narrow ? phoneDate : longDate).format(state.dayUtcMs)} · ${zone}`;
+    document.getElementById('answer-tag').textContent = change ? `${change.label.replace('go', 'went')} today` : clocksWords[state.clocks] ? clocksWords[state.clocks][0].toUpperCase() + clocksWords[state.clocks].slice(1) : '';
+    document.title = `${eventWords(result)} ${state.event} ${placePhrase(state.place)}, ${longDate.format(state.dayUtcMs)}`;
+  }
+  writeKeyDays();
+  document.getElementById('view-region').textContent = continentOf(state.place.timeZone) === 'World' ? 'Region' : continentOf(state.place.timeZone);
+}
+
+// ================================================================ Four days of the year, by the chosen place's own clock rules
+const KEY_DAY_ORDER = ['Shortest day', 'Longest day', 'Clocks go forward', 'Clocks go back'];
+const KEY_DAY_WORDS = { 'Shortest day': 'Shortest day', 'Longest day': 'Longest day', 'Clocks go forward': 'Clocks forward', 'Clocks go back': 'Clocks back' };
+function writeKeyDays() {
+  const marks = chartData().keyDates.filter(mark => KEY_DAY_ORDER.includes(mark.label));
+  const days = [{ day: todayUtc, words: 'Today' }, ...marks.map(mark => ({ day: mark.day, words: KEY_DAY_WORDS[mark.label] }))];
+  const element = document.getElementById('key-days');
+  const html = days.map(({ day, words }) => `<button data-day="${day}" title="${dayMonth.format(day)}">${words}</button>`).join('');
+  if (element.dataset.html !== html) { element.dataset.html = html; element.innerHTML = html; }
+  for (const button of element.children) button.setAttribute('aria-pressed', Number(button.dataset.day) === state.dayUtcMs);
+}
+document.getElementById('key-days').addEventListener('click', event => { const button = event.target.closest('button'); if (button) { stopPlaying(); setDay(Number(button.dataset.day)); writeUrlSoon(); } });
+
+// ================================================================ Calendar
+const calendar = document.getElementById('calendar'), dateButton = document.getElementById('date-button');
+let calendarMonth = null;
+function drawCalendar() {
+  const [year, month] = calendarMonth;
+  document.getElementById('calendar-month').textContent = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(Date.UTC(year, month, 1));
+  const marks = new Set(keyDates(state.place, year).map(mark => mark.day));
+  const firstWeekday = (new Date(Date.UTC(year, month, 1)).getUTCDay() + 6) % 7, count = (Date.UTC(year, month + 1, 1) - Date.UTC(year, month, 1)) / DAY_MS;
+  let html = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(letter => `<span class="weekday">${letter}</span>`).join('') + '<span></span>'.repeat(firstWeekday);
+  for (let day = 1; day <= count; day++) {
+    const utc = Date.UTC(year, month, day);
+    html += `<button data-day="${utc}" class="${utc === todayUtc ? 'today' : ''} ${marks.has(utc) ? 'key' : ''}" aria-pressed="${utc === state.dayUtcMs}">${day}</button>`;
+  }
+  document.getElementById('calendar-grid').innerHTML = html;
+}
+function openCalendar(open) {
+  calendar.hidden = !open; document.getElementById('backdrop').hidden = !open && sharePanel.hidden;
+  if (open) { stopPlaying(); openShare(false); const d = new Date(state.dayUtcMs); calendarMonth = [d.getUTCFullYear(), d.getUTCMonth()]; drawCalendar(); }
+}
+dateButton.addEventListener('click', () => openCalendar(calendar.hidden));
+document.getElementById('calendar-previous').addEventListener('click', () => { calendarMonth = calendarMonth[1] ? [calendarMonth[0], calendarMonth[1] - 1] : [calendarMonth[0] - 1, 11]; drawCalendar(); });
+document.getElementById('calendar-next').addEventListener('click', () => { calendarMonth = calendarMonth[1] < 11 ? [calendarMonth[0], calendarMonth[1] + 1] : [calendarMonth[0] + 1, 0]; drawCalendar(); });
+document.getElementById('calendar-grid').addEventListener('click', event => { const button = event.target.closest('button'); if (button) { openCalendar(false); setDay(Number(button.dataset.day)); writeUrlSoon(); } });
+
+// ================================================================ Share pictures: built for the frame they land in
+// The map fills its part of the frame; the words sit on Ryan Hall's navy beside or above it. Framing comes from the link
+// alone (the place and its surroundings), so the same link always makes the same picture.
+function drawShareImage(kind) {
+  const portrait = kind === 'post', W = portrait ? 1080 : 1200, H = portrait ? 1350 : 630;
+  const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
+  const context = canvas.getContext('2d');
+  context.fillStyle = SEA; context.fillRect(0, 0, W, H);
+  // The words first, so the map can start below them.
+  const result = placeEvent(state.place, state.dayUtcMs, state.event, state.clocks), change = clockChangeToday();
+  const margin = portrait ? 64 : 52, figureSize = (portrait ? 210 : 158) * (result.polar ? 0.5 : 1), lineSize = portrait ? 46 : 34;
+  const figureBaseline = margin + figureSize * 0.8;
+  const lines = [
+    [result.polar ? `No ${state.event} ${placePhrase(state.place)}` : `${eventName()} ${placePhrase(state.place)}`, '#ffffff', 600],
+    [longDate.format(state.dayUtcMs), '#ffffff', 400],
+  ];
+  const other = state.event === 'sunset' ? 'sunrise' : 'sunset', otherResult = placeEvent(state.place, state.dayUtcMs, other, state.clocks);
+  lines.push([`${other === 'sunrise' ? 'Sunrise' : 'Sunset'} ${eventWords(otherResult)}`, '#ffffffcc', 400]);
+  if (clocksWords[state.clocks]) lines.push([`With ${clocksWords[state.clocks]}`, '#fbbf24', 600]);
+  if (change) lines.push([`${change.label.replace('go', 'went')} today`, '#fbbf24', 600]);
+  const firstLine = figureBaseline + lineSize * 1.55, wordsBottom = firstLine + (lines.length - 1) * lineSize * 1.22 + lineSize * 0.4;
+  const map = portrait ? { x: 0, y: Math.round(wordsBottom + 28), width: W } : { x: 450, y: 0, width: 750, height: H };
+  if (portrait) map.height = H - 150 - map.y;
+  const projection = d3.geoMercator().scale(map.width / (42 * DEG)).translate([0, 0]);
+  const [px, py] = projection([state.place.lon, state.place.lat]);
+  projection.translate([map.width / 2 - px, map.height * 0.5 - py]);
+  const times = { domain: dayDomain(state.dayUtcMs, state.event, state.clocks) };
+  const [tx, ty] = projection.translate();
+  imageRenderer.draw({ width: map.width, height: map.height, pixelRatio: 1, scale: projection.scale(), translate: [tx, ty], lineScale: 1.5 }, pictureFor(state.dayUtcMs, state.event, state.clocks, times.domain));
+  context.drawImage(imageRenderer.canvas, map.x, map.y);
+  context.save(); context.translate(map.x, map.y);
+  context.beginPath(); context.rect(0, 0, map.width, map.height); context.clip();
+  drawLabels(context, projection, layoutLabels(context, projection, map.width, map.height, 1.6, state.place, [], portrait ? 13 : 8), 1.6, state.dayUtcMs, state.event, state.clocks, state.place);
+  drawChosenPlace(context, projection, state.place, 1.6);
+  context.restore();
+  context.textAlign = 'left'; context.textBaseline = 'alphabetic';
+  context.fillStyle = '#ef4444'; context.font = `800 ${figureSize}px "Barlow Condensed"`;
+  context.fillText(eventWords(result), margin - 4, figureBaseline);
+  lines.forEach(([text, colour, weight], index) => {
+    context.fillStyle = colour; context.font = `${weight} ${lineSize}px Barlow`;
+    let size = lineSize; while (context.measureText(text).width > (portrait ? W : map.x) - 2 * margin && size > 20) { size -= 2; context.font = `${weight} ${size}px Barlow`; }
+    context.fillText(text, margin, firstLine + index * lineSize * 1.22);
+  });
+  // The key and the address.
+  const keyWidth = portrait ? 420 : map.x - 2 * margin, keyLeft = margin, keyTop = portrait ? H - 104 : H - 118;
+  const earliest = Math.min(localFromEvening(times.domain[0], state.event), localFromEvening(times.domain[1], state.event));
+  const latest = Math.max(localFromEvening(times.domain[0], state.event), localFromEvening(times.domain[1], state.event));
+  context.fillStyle = '#ffffffb3'; context.font = `600 ${portrait ? 22 : 17}px Barlow`;
+  context.fillText(state.event === 'sunset' ? 'Sunset time' : 'Sunrise time', keyLeft, keyTop - 10);
+  const bar = context.createLinearGradient(keyLeft, 0, keyLeft + keyWidth, 0);
+  d3.range(0, 1.0001, 0.1).forEach(f => bar.addColorStop(f, rampColourAt(eveningEquivalent(earliest + f * (latest - earliest), state.event), times.domain)));
+  context.fillStyle = bar; context.fillRect(keyLeft, keyTop, keyWidth, portrait ? 14 : 11);
+  context.fillStyle = '#ffffffcc'; context.font = `600 ${portrait ? 22 : 17}px Barlow`;
+  context.textAlign = 'left'; context.fillText(formatClock(earliest), keyLeft, keyTop + (portrait ? 44 : 34));
+  context.textAlign = 'right'; context.fillText(formatClock(latest), keyLeft + keyWidth, keyTop + (portrait ? 44 : 34));
+  context.textAlign = portrait ? 'right' : 'left'; context.fillStyle = '#ffffff'; context.font = `600 ${portrait ? 30 : 22}px Barlow`;
+  context.fillText('sunsetsunrise.jjpcodes.com', portrait ? W - margin : margin, portrait ? keyTop + 30 : H - 26);
+  context.textAlign = 'right'; context.fillStyle = '#ffffff80'; context.font = `400 ${portrait ? 15 : 12}px Barlow`;
+  context.fillText('© OpenStreetMap', W - 12, H - 10);
+  return canvas;
+}
+const canvasBlob = canvas => new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not create the image')), 'image/png'));
+const imageName = () => `${state.event}-${plainName(state.place.name).replace(/\W+/g, '-')}-${new Date(state.dayUtcMs).toISOString().slice(0, 10)}.png`;
+const sharePanel = document.getElementById('share-panel'), shareStatus = document.getElementById('share-status');
+let sharePostCanvas = null;
+const backdrop = document.getElementById('backdrop');
+backdrop.addEventListener('click', () => { openShare(false); openCalendar(false); });
+function openShare(open) {
+  sharePanel.hidden = !open; backdrop.hidden = !open && calendar.hidden;
+  shareStatus.textContent = '';
+  if (!open) return;
+  stopPlaying(); openCalendar(false);
+  sharePostCanvas = drawShareImage('post');
+  document.getElementById('share-preview').src = sharePostCanvas.toDataURL('image/png');
+  document.getElementById('share-preview').alt = document.title;
+}
+document.getElementById('share-button').addEventListener('click', () => openShare(sharePanel.hidden));
+document.getElementById('share-close').addEventListener('click', () => openShare(false));
+document.addEventListener('keydown', event => { if (event.key === 'Escape') { openShare(false); openCalendar(false); document.getElementById('search-results').hidden = true; } });
+document.addEventListener('pointerdown', event => {
+  if (!sharePanel.hidden && !event.target.closest('.share-wrap')) openShare(false);
+  if (!calendar.hidden && !event.target.closest('.date-wrap')) openCalendar(false);
+});
+document.getElementById('copy-link').addEventListener('click', async () => { await navigator.clipboard.writeText(shareUrl()); shareStatus.textContent = 'Link copied. It opens this place, day and view.'; });
+document.getElementById('copy-image').addEventListener('click', async () => {
+  const blob = canvasBlob(sharePostCanvas);
+  try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); shareStatus.textContent = 'Image copied. Paste it into your post.'; }
+  catch {
+    const url = URL.createObjectURL(await blob), link = document.createElement('a');
+    link.href = url; link.download = imageName(); link.click(); setTimeout(() => URL.revokeObjectURL(url), 10000);
+    shareStatus.textContent = 'Image downloaded.';
+  }
+});
+const nativeShare = document.getElementById('share-native');
+nativeShare.hidden = !(navigator.canShare && matchMedia('(pointer: coarse)').matches);
+nativeShare.addEventListener('click', async () => {
+  const file = new File([await canvasBlob(sharePostCanvas)], imageName(), { type: 'image/png' });
+  const data = { url: shareUrl(), files: [file] };
+  await navigator.share(navigator.canShare(data) ? data : { url: shareUrl(), title: document.title }).catch(() => {});
+});
+
+// ================================================================ Playing the year, slowly
+const DAY_STEP_MS = 220;
+let playTimer = null;
+function startPlaying() {
+  state.playing = true;
+  document.getElementById('play').setAttribute('aria-label', 'Pause');
+  document.getElementById('play-icon').innerHTML = '<path d="M2 1h4v12H2zM8 1h4v12H8z"/>';
+  playTimer = setInterval(() => setDay(wrapIntoYear(state.dayUtcMs + DAY_MS)), DAY_STEP_MS);
+}
+function stopPlaying() {
+  if (!state.playing) return;
+  state.playing = false; clearInterval(playTimer);
+  document.getElementById('play').setAttribute('aria-label', 'Play the year');
+  document.getElementById('play-icon').innerHTML = '<path d="M2 1l11 6-11 6z"/>';
+  writeUrlSoon();
+}
+document.getElementById('play').addEventListener('click', () => { openShare(false); openCalendar(false); state.playing ? stopPlaying() : startPlaying(); });
+
+// ================================================================ Wiring
+function setDay(dayUtcMs) {
+  if (yearOf(dayUtcMs) !== yearOf(state.dayUtcMs)) chartCache = null;
+  state.dayUtcMs = dayUtcMs;
+  writeAnswer(); drawChart();
+  if (mainView) { refitColours(); render(); }
+}
+function selectPlace(place, moveMap) {
+  state.place = place; chartCache = null;
+  writeAnswer(); drawChart();
+  if (moveMap) setView('region', place); else settleView();
+}
+function setEvent(event) {
+  state.event = event;
+  document.getElementById('show-sunset').setAttribute('aria-pressed', event === 'sunset');
+  document.getElementById('show-sunrise').setAttribute('aria-pressed', event === 'sunrise');
+  writeAnswer(); drawChart();
+  if (mainView) { refitColours(true); render(); writeUrlSoon(); }
+}
+function setClocks(clocks) {
+  state.clocks = clocks; chartCache = null;
+  for (const button of document.querySelectorAll('#clocks button')) button.setAttribute('aria-pressed', button.dataset.clocks === clocks);
+  writeAnswer(); drawChart();
+  if (mainView) { refitColours(); render(); writeUrlSoon(); }
+}
+document.getElementById('show-sunset').addEventListener('click', () => setEvent('sunset'));
+document.getElementById('show-sunrise').addEventListener('click', () => setEvent('sunrise'));
+document.getElementById('clocks').addEventListener('click', event => { const button = event.target.closest('button'); if (button) setClocks(button.dataset.clocks); });
+document.getElementById('view-world').addEventListener('click', () => setView('world'));
+document.getElementById('view-region').addEventListener('click', () => setView('region'));
+
+const searchInput = document.getElementById('search'), searchResults = document.getElementById('search-results');
+let searchMatches = [];
+searchInput.addEventListener('input', () => {
+  const query = plainName(searchInput.value.trim());
+  searchMatches = query ? searchOrder.filter(c => c.searchNames.some(name => name.startsWith(query))).slice(0, 6) : [];
+  searchResults.innerHTML = searchMatches.map((c, i) => `<button data-index="${i}">${c.name}<small>${regionNames.of(c.country)}</small></button>`).join('');
+  searchResults.hidden = !searchMatches.length;
+});
+searchResults.addEventListener('click', event => { const button = event.target.closest('button'); if (button) chooseSearch(searchMatches[button.dataset.index]); });
+searchInput.addEventListener('keydown', event => { if (event.key === 'Enter' && searchMatches[0]) chooseSearch(searchMatches[0]); });
+function selectNear(latitude, longitude) {
+  selectPlace(nearestPlace(latitude, longitude, 30) || pointPlace(latitude, longitude), true);
+}
+document.getElementById('locate').addEventListener('click', () => {
+  const fail = () => { searchInput.placeholder = 'Location not available'; setTimeout(() => { searchInput.placeholder = 'Search a place'; }, 3000); };
+  if (!navigator.geolocation) return fail();
+  navigator.geolocation.getCurrentPosition(position => selectNear(position.coords.latitude, position.coords.longitude), fail, { maximumAge: 600000, timeout: 10000 });
+});
+function chooseSearch(place) { searchInput.value = ''; searchResults.hidden = true; searchInput.blur(); selectPlace(place, true); }
+
+await Promise.all(['400 11px Barlow', '600 12px Barlow', '600 46px Barlow', '800 17px "Barlow Condensed"'].map(font => document.fonts.load(font)));
+let resizeTimer;
+new ResizeObserver(() => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (!baseProjection) return; if (viewName === 'moved') settleView(); else setView(viewName); drawChart(); }, 60); }).observe(mapArea);
+setEvent(state.event);
+setClocks(state.clocks);
+const linkMap = params.get('map') && params.get('map').split(',').map(Number);
+if (linkMap && linkMap.length === 3 && linkMap.every(Number.isFinite)) setViewFromLink(...linkMap);
+else setView(params.get('view') === 'world' ? 'world' : 'region');
+// With no place in the link, start roughly where the visitor is: the site's server reads its own IP lookup (/api/home).
+if (!params.get('place') && !params.get('point')) {
+  fetch('/api/home').then(response => response.ok ? response.json() : null).then(home => {
+    if (home && Number.isFinite(home.latitude) && Number.isFinite(home.longitude)) selectNear(home.latitude, home.longitude);
+  }).catch(() => {});
+}
+
+// A link's preview picture at full size, for checking: ?card=link or ?card=post
+if (params.get('card')) {
+  const view = document.createElement('div'); view.className = 'card-view';
+  const image = new Image(); image.src = drawShareImage(params.get('card')).toDataURL('image/png');
+  view.append(image); document.body.append(view);
+}
+window.sunsetDesign = { colourOfDay: minutes => rampColourAt(minutes, dayDomain()), zoneAnchors: () => zoneAnchors, landDeviation: geometry.land.worstDeviation, state, placeEvent, cities: searchOrder, formatClock, render, setDay, transformTo: t => { transform = t; render(); } };
+</script>
+</body>
+</html>
