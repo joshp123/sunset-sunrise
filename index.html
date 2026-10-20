@@ -250,9 +250,9 @@ button { cursor: pointer; }
 </footer>
 
 <script type="module">
-import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7/+esm';
-import * as topojson from 'https://cdn.jsdelivr.net/npm/topojson-client@3/+esm';
-import earcut, { deviation } from 'https://cdn.jsdelivr.net/npm/earcut@3/+esm';
+import * as d3 from '/vendor/npm/d3@7/+esm';
+import * as topojson from '/vendor/npm/topojson-client@3/+esm';
+import earcut, { deviation } from '/vendor/npm/earcut@3/+esm';
 
 // ================================================================ The sun (NOAA / Meeus)
 const DEG = Math.PI / 180, DAY_MS = 86400000;
@@ -364,8 +364,8 @@ const [zoneNames, zoneAbbreviations, cityRows, zoneImage, land, countries] = awa
   fetch('data/zone-names.json').then(r => r.json()),
   fetch('data/cities.json').then(r => r.json()),
   new Promise(resolve => { const image = new Image(); image.onload = () => resolve(image); image.src = 'data/zones.png'; }),
-  fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-50m.json').then(r => r.json()),
-  fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json').then(r => r.json()),
+  fetch('/vendor/land-50m.json').then(r => r.json()),
+  fetch('/vendor/countries-50m.json').then(r => r.json()),
 ]);
 const ZONE_COLUMNS = 3600, ZONE_ROWS = 1800;
 const zoneBytes = (() => {

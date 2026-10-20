@@ -21,6 +21,19 @@ python3 -m http.server 5207
 
 Then open <http://127.0.0.1:5207/>. Add `&card=post` or `&card=link` to any view's address to see its share picture full size.
 
+## Deploy
+
+The public ChatGPT Site is identified by `.openai/hosting.json`. Its Worker serves the app, local libraries and data, IP-based `/api/home`, and link preview metadata. DNS is managed in `opentofu-infra/websites/jjpcodes.com/sunset-sunrise-sites.tf`.
+
+From a Node.js 24 environment, commit the source changes, then run:
+
+```sh
+node hosting/build.mjs
+node ~/.codex/plugins/cache/openai-curated-remote/sites/1.0.1/scripts/site-workflow.mjs --project-id appgprj_6ad7ddad964c8191a8fe2df7b564c651
+```
+
+Obtain a fresh credential with Sites `create_source_repository_write_credential`. At the helper's hidden stdin prompt, send `{"credential": <returned credential object>, "commands": [], "archivePath": "/tmp/sunset-sunrise-sites.tar.gz"}`. Keep the credential out of files and shell arguments. Pass the helper's exact `project_id`, `commit_sha` and `archive` to Sites `save_site_version`, then its returned version ID to `deploy_site_version`. Preserve the public audience. Finally run `git push origin main`.
+
 ## Rebuild the data
 
 ```sh
