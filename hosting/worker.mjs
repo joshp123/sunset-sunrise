@@ -76,12 +76,13 @@ export default {
       const page = await pageWithPreview(url);
       return new Response(request.method === 'HEAD' ? null : page, {headers: {'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=0, must-revalidate'}});
     }
+    if (url.pathname === '/favicon.ico') return new Response(null, {status: 204, headers: {'Cache-Control': 'public, max-age=86400'}});
     const asset = WEB_ASSETS[url.pathname];
     if (!asset) return new Response('Not found', {status: 404});
     const headers = {'Content-Type': asset.type, 'Cache-Control': 'public, max-age=3600, must-revalidate', ETag: asset.etag, Vary: 'Accept-Encoding'};
     if (request.headers.get('If-None-Match') === asset.etag) return new Response(null, {status: 304, headers});
     const acceptsGzip = /\bgzip\b/.test(request.headers.get('Accept-Encoding') || '');
     if (acceptsGzip) headers['Content-Encoding'] = 'gzip';
-    return new Response(request.method === 'HEAD' ? null : acceptsGzip ? bytesFromBase64(asset.data) : await assetBytes(url.pathname), {headers});
+    return new Response(request.method === 'HEAD' ? null : acceptsGzip ? bytesFromBase64(asset.data) : await assetBytes(url.pathname), {headers, ...(acceptsGzip ? {encodeBody: 'manual'} : {})});
   },
 };
