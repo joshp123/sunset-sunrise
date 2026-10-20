@@ -1388,10 +1388,22 @@ setClocks(state.clocks);
 const linkMap = params.get('map') && params.get('map').split(',').map(Number);
 if (linkMap && linkMap.length === 3 && linkMap.every(Number.isFinite)) setViewFromLink(...linkMap);
 else setView(params.get('view') === 'world' ? 'world' : 'region');
-// With no place in the link, start roughly where the visitor is: the site's server reads its own IP lookup (/api/home).
+// With no place in the link, start roughly where the visitor is. The server knows the visitor's country (and sometimes
+// coordinates); the browser knows its time zone. Keep the time zone's place if it is in that country; otherwise take the
+// country's biggest place in the visitor's time zone, then its capital, then its biggest place.
+function placeInCountry(country) {
+  if (state.place.country === country) return null;
+  const inCountry = searchOrder.filter(place => place.country === country && place.labelable);
+  return inCountry.filter(place => place.timeZone === browserZone).sort((a, b) => b.population - a.population)[0]
+    || inCountry.find(place => place.capital)
+    || inCountry.sort((a, b) => b.population - a.population)[0]
+    || null;
+}
 if (!params.get('place') && !params.get('point')) {
   fetch('/api/home').then(response => response.ok ? response.json() : null).then(home => {
-    if (home && Number.isFinite(home.latitude) && Number.isFinite(home.longitude)) selectNear(home.latitude, home.longitude);
+    if (home && Number.isFinite(home.latitude) && Number.isFinite(home.longitude)) return selectNear(home.latitude, home.longitude);
+    const place = home && typeof home.country === 'string' && placeInCountry(home.country.toUpperCase());
+    if (place) selectPlace(place, true);
   }).catch(() => {});
 }
 
