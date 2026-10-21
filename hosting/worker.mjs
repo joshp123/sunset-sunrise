@@ -58,7 +58,7 @@ async function pageWithPreview(url) {
   const image = `${url.origin}/share.png`;
   const tags = {
     'og:type': 'website', 'og:site_name': 'Sunset and sunrise', 'og:title': title, 'og:description': description,
-    'og:url': url.href, 'og:image': image, 'og:image:width': '1200', 'og:image:height': '630', 'og:image:alt': 'Sunset in Rotterdam on Sunday 25 October 2026, with a map of sunset times.',
+    'og:url': url.href, 'og:image': image, 'og:image:width': '1600', 'og:image:height': '900', 'og:image:alt': 'Sunset in Rotterdam on Sunday 25 October 2026, with a map of sunset times.',
   };
   const metadata = Object.entries(tags).map(([property, content]) => `<meta property="${property}" content="${escapeHtml(content)}">`).join('\n')
     + `\n<meta name="twitter:card" content="summary_large_image">\n<meta name="twitter:title" content="${escapeHtml(title)}">\n<meta name="twitter:description" content="${escapeHtml(description)}">\n<meta name="twitter:image" content="${escapeHtml(image)}">`;
