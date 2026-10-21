@@ -9,7 +9,7 @@
      The map is drawn by the graphics card: land and borders as geometry, every pixel's sunset worked out in a shader. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600&family=Barlow+Condensed:wght@800&display=swap" rel="stylesheet">
+<link id="fonts" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600&family=Barlow+Condensed:wght@800&display=swap" rel="stylesheet">
 <style>
 :root {
   --ui: 1;
@@ -99,6 +99,7 @@ button { cursor: pointer; }
 .map-key-polar i { width: calc(14px * var(--ui)); height: calc(10px * var(--ui)); border-radius: 2px; display: inline-block; }
 .polar-night { background: var(--polar-night); } .midnight-sun { background: var(--midnight-sun); }
 .attribution { position: absolute; right: 6px; bottom: 4px; z-index: 2; text-decoration: none; white-space: nowrap; font-size: calc(11px * var(--ui)); color: #ffffffa6; }
+.attribution a { color: inherit; text-decoration: none; }
 .tooltip { position: absolute; pointer-events: none; background: var(--page); border: 1px solid var(--border); box-shadow: var(--shadow); border-radius: 8px; padding: 5px 9px; font-size: var(--size-small); white-space: nowrap; z-index: 4; }
 .tooltip b { font-weight: 600; }
 
@@ -219,7 +220,7 @@ button { cursor: pointer; }
     <button id="view-region">Europe</button>
   </div>
   <div class="tooltip" id="tooltip" hidden></div>
-  <a class="attribution" id="attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a>
+  <span class="attribution" id="attribution"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a> · <a href="https://db-ip.com" target="_blank" rel="noopener">DB-IP</a></span>
 </main>
 
 <div class="backdrop" id="backdrop" hidden></div>
@@ -359,13 +360,14 @@ const premultiplied = (colour, alpha = 1) => { const c = d3.rgb(colour); return 
 const SEA = '#1b1f2e';
 
 // ================================================================ Data
-const [zoneNames, zoneAbbreviations, cityRows, zoneImage, land, countries] = await Promise.all([
+const [zoneNames, zoneAbbreviations, cityRows, zoneImage, land, countries, stateLines] = await Promise.all([
   fetch('data/zones.json').then(r => r.json()),
   fetch('data/zone-names.json').then(r => r.json()),
   fetch('data/cities.json').then(r => r.json()),
   new Promise(resolve => { const image = new Image(); image.onload = () => resolve(image); image.src = 'data/zones.png'; }),
   fetch('/vendor/land-50m.json').then(r => r.json()),
   fetch('/vendor/countries-50m.json').then(r => r.json()),
+  fetch('data/state-lines.json').then(r => r.json()),
 ]);
 const ZONE_COLUMNS = 3600, ZONE_ROWS = 1800;
 const zoneBytes = (() => {
@@ -448,6 +450,7 @@ const geometry = {
       [35.642, 32.810], [35.636, 32.765], [35.663, 32.705], [35.594, 32.703]]);
     return lineSegments(mesh);
   })(),
+  states: lineSegments({ coordinates: stateLines }),
 };
 
 // ================================================================ The renderer: one WebGL2 context per canvas
@@ -530,7 +533,7 @@ function createRenderer(canvas) {
     const segment = gl.getAttribLocation(lines.program, 'segment'); gl.enableVertexAttribArray(segment); gl.vertexAttribPointer(segment, 4, gl.FLOAT, false, 0, 0); gl.vertexAttribDivisor(segment, 1);
     return { vao, count: segments.length / 4 };
   };
-  const coast = lineVao(geometry.coast), borders = lineVao(geometry.borders);
+  const coast = lineVao(geometry.coast), borders = lineVao(geometry.borders), states = lineVao(geometry.states);
   gl.bindVertexArray(null);
 
   const texture = (unit, filter) => {
@@ -550,7 +553,7 @@ function createRenderer(canvas) {
   const colours = {
     polarNight: premultiplied('#2e3448'), polarNightStripe: premultiplied('#474e66'),
     midnightSun: premultiplied('#fffbea'), midnightSunStripe: premultiplied('#e8cf7a'),
-    coast: premultiplied('#ffffff', 0.38), borders: premultiplied(SEA, 0.72),
+    coast: premultiplied('#ffffff', 0.38), borders: premultiplied(SEA, 0.72), states: premultiplied(SEA, 0.42),
   };
   const sea = d3.rgb(SEA);
   return {
@@ -580,7 +583,7 @@ function createRenderer(canvas) {
       for (const shift of shifts) { gl.uniform1f(u.lonShift, shift); gl.drawElements(gl.TRIANGLES, geometry.land.indices.length, gl.UNSIGNED_INT, 0); }
       gl.useProgram(lines.program); shared(lines);
       gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-      for (const [layer, colour, width] of [[coast, colours.coast, 0.35], [borders, colours.borders, 0.5 * (view.lineScale || 1)]]) {
+      for (const [layer, colour, width] of [[coast, colours.coast, 0.35], [states, colours.states, 0.3 * (view.lineScale || 1)], [borders, colours.borders, 0.5 * (view.lineScale || 1)]]) {
         gl.bindVertexArray(layer.vao); gl.uniform4fv(lines.uniforms.lineColour, colour); gl.uniform1f(lines.uniforms.halfWidth, width);
         for (const shift of shifts) { gl.uniform1f(lines.uniforms.lonShift, shift); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, layer.count); }
       }
@@ -1215,62 +1218,55 @@ document.getElementById('calendar-grid').addEventListener('click', event => { co
 // ================================================================ Share pictures: built for the frame they land in
 // The map fills its part of the frame; the words sit on Ryan Hall's navy beside or above it. Framing comes from the link
 // alone (the place and its surroundings), so the same link always makes the same picture.
-function drawShareImage(kind) {
-  const portrait = kind === 'post', W = portrait ? 1080 : 1200, H = portrait ? 1350 : 630;
+function drawShareImage() {
+  const W = 1600, H = 900, safe = 66, margin = 72;
   const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
   const context = canvas.getContext('2d');
   context.fillStyle = SEA; context.fillRect(0, 0, W, H);
-  // The words first, so the map can start below them.
   const result = placeEvent(state.place, state.dayUtcMs, state.event, state.clocks), change = clockChangeToday();
-  const margin = portrait ? 64 : 52, figureSize = (portrait ? 210 : 158) * (result.polar ? 0.5 : 1), lineSize = portrait ? 46 : 34;
-  const figureBaseline = margin + figureSize * 0.8;
-  const lines = [
-    [result.polar ? `No ${state.event} ${placePhrase(state.place)}` : `${eventName()} ${placePhrase(state.place)}`, '#ffffff', 600],
-    [longDate.format(state.dayUtcMs), '#ffffff', 400],
-  ];
-  const other = state.event === 'sunset' ? 'sunrise' : 'sunset', otherResult = placeEvent(state.place, state.dayUtcMs, other, state.clocks);
-  lines.push([`${other === 'sunrise' ? 'Sunrise' : 'Sunset'} ${eventWords(otherResult)}`, '#ffffffcc', 400]);
-  if (clocksWords[state.clocks]) lines.push([`With ${clocksWords[state.clocks]}`, '#fbbf24', 600]);
-  if (change) lines.push([clockChangeWords(change), '#fbbf24', 600]);
-  const firstLine = figureBaseline + lineSize * 1.55, wordsBottom = firstLine + (lines.length - 1) * lineSize * 1.22 + lineSize * 0.4;
-  const map = portrait ? { x: 0, y: Math.round(wordsBottom + 28), width: W } : { x: 450, y: 0, width: 750, height: H };
-  if (portrait) map.height = H - 150 - map.y;
-  const projection = d3.geoMercator().scale(map.width / (42 * DEG)).translate([0, 0]);
+  const tag = change ? clockChangeWords(change) : clocksWords[state.clocks] ? `With ${clocksWords[state.clocks]}` : '';
+  // The map, on the right, the full height of the image.
+  const map = { x: 620, y: 0, width: W - 620, height: H };
+  const projection = d3.geoMercator().scale(map.width / (40 * DEG)).translate([0, 0]);
   const [px, py] = projection([state.place.lon, state.place.lat]);
   projection.translate([map.width / 2 - px, map.height * 0.5 - py]);
-  const times = { domain: dayDomain(state.dayUtcMs, state.event, state.clocks) };
+  const domain = dayDomain(state.dayUtcMs, state.event, state.clocks);
   const [tx, ty] = projection.translate();
-  imageRenderer.draw({ width: map.width, height: map.height, pixelRatio: 1, scale: projection.scale(), translate: [tx, ty], lineScale: 1.5 }, pictureFor(state.dayUtcMs, state.event, state.clocks, times.domain));
+  imageRenderer.draw({ width: map.width, height: map.height, pixelRatio: 1, scale: projection.scale(), translate: [tx, ty], lineScale: 1.8 }, pictureFor(state.dayUtcMs, state.event, state.clocks, domain));
   context.drawImage(imageRenderer.canvas, map.x, map.y);
   context.save(); context.translate(map.x, map.y);
   context.beginPath(); context.rect(0, 0, map.width, map.height); context.clip();
-  drawLabels(context, projection, layoutLabels(context, projection, map.width, map.height, 1.6, state.place, [], portrait ? 13 : 8), 1.6, state.dayUtcMs, state.event, state.clocks, state.place);
-  drawChosenPlace(context, projection, state.place, 1.6);
+  const keepClear = [[0, 0, map.width, safe], [0, map.height - safe, map.width, map.height]];
+  drawLabels(context, projection, layoutLabels(context, projection, map.width, map.height, 2, state.place, keepClear, 9), 2, state.dayUtcMs, state.event, state.clocks, state.place);
+  drawChosenPlace(context, projection, state.place, 2);
   context.restore();
+  // The words, on the left.
+  const textWidth = map.x - margin - 40;
+  const fit = (text, weight, size, family = 'Barlow') => { context.font = `${weight} ${size}px ${family}`; while (context.measureText(text).width > textWidth && size > 24) { size -= 2; context.font = `${weight} ${size}px ${family}`; } return size; };
   context.textAlign = 'left'; context.textBaseline = 'alphabetic';
-  context.fillStyle = '#ef4444'; context.font = `800 ${figureSize}px "Barlow Condensed"`;
-  context.fillText(eventWords(result), margin - 4, figureBaseline);
-  lines.forEach(([text, colour, weight], index) => {
-    context.fillStyle = colour; context.font = `${weight} ${lineSize}px Barlow`;
-    let size = lineSize; while (context.measureText(text).width > (portrait ? W : map.x) - 2 * margin && size > 20) { size -= 2; context.font = `${weight} ${size}px Barlow`; }
-    context.fillText(text, margin, firstLine + index * lineSize * 1.22);
-  });
-  // The key and the address.
-  const keyWidth = portrait ? 420 : map.x - 2 * margin, keyLeft = margin, keyTop = portrait ? H - 104 : H - 118;
-  const earliest = Math.min(localFromEvening(times.domain[0], state.event), localFromEvening(times.domain[1], state.event));
-  const latest = Math.max(localFromEvening(times.domain[0], state.event), localFromEvening(times.domain[1], state.event));
-  context.fillStyle = '#ffffffb3'; context.font = `600 ${portrait ? 22 : 17}px Barlow`;
-  context.fillText(state.event === 'sunset' ? 'Sunset time' : 'Sunrise time', keyLeft, keyTop - 10);
-  const bar = context.createLinearGradient(keyLeft, 0, keyLeft + keyWidth, 0);
-  d3.range(0, 1.0001, 0.1).forEach(f => bar.addColorStop(f, rampColourAt(eveningEquivalent(earliest + f * (latest - earliest), state.event), times.domain)));
-  context.fillStyle = bar; context.fillRect(keyLeft, keyTop, keyWidth, portrait ? 14 : 11);
-  context.fillStyle = '#ffffffcc'; context.font = `600 ${portrait ? 22 : 17}px Barlow`;
-  context.textAlign = 'left'; context.fillText(formatClock(earliest), keyLeft, keyTop + (portrait ? 44 : 34));
-  context.textAlign = 'right'; context.fillText(formatClock(latest), keyLeft + keyWidth, keyTop + (portrait ? 44 : 34));
-  context.textAlign = portrait ? 'right' : 'left'; context.fillStyle = '#ffffff'; context.font = `600 ${portrait ? 30 : 22}px Barlow`;
-  context.fillText('sunsetsunrise.jjpcodes.com', portrait ? W - margin : margin, portrait ? keyTop + 30 : H - 26);
-  context.textAlign = 'right'; context.fillStyle = '#ffffff80'; context.font = `400 ${portrait ? 15 : 12}px Barlow`;
-  context.fillText('© OpenStreetMap', W - 12, H - 10);
+  context.fillStyle = '#ef4444'; fit(eventWords(result), 800, result.polar ? 120 : 250, '"Barlow Condensed"');
+  context.fillText(eventWords(result), margin - 6, safe + 210);
+  context.fillStyle = '#ffffff'; fit(result.polar ? `No ${state.event} ${placePhrase(state.place)}` : `${eventName()} ${placePhrase(state.place)}`, 600, 52);
+  context.fillText(result.polar ? `No ${state.event} ${placePhrase(state.place)}` : `${eventName()} ${placePhrase(state.place)}`, margin, safe + 300);
+  context.fillStyle = '#ffffffcc'; fit(longDate.format(state.dayUtcMs), 400, 46);
+  context.fillText(longDate.format(state.dayUtcMs), margin, safe + 366);
+  if (tag) { context.fillStyle = '#fbbf24'; fit(tag, 600, 46); context.fillText(tag, margin, safe + 432); }
+  // The key and the address, at the foot of the words.
+  const earliest = Math.min(localFromEvening(domain[0], state.event), localFromEvening(domain[1], state.event));
+  const latest = Math.max(localFromEvening(domain[0], state.event), localFromEvening(domain[1], state.event));
+  const keyTop = H - safe - 150, keyWidth = textWidth;
+  context.fillStyle = '#ffffffb3'; context.font = '600 24px Barlow';
+  context.fillText(state.event === 'sunset' ? 'Sunset time' : 'Sunrise time', margin, keyTop - 14);
+  const bar = context.createLinearGradient(margin, 0, margin + keyWidth, 0);
+  d3.range(0, 1.0001, 0.1).forEach(f => bar.addColorStop(f, rampColourAt(eveningEquivalent(earliest + f * (latest - earliest), state.event), domain)));
+  context.fillStyle = bar; context.fillRect(margin, keyTop, keyWidth, 16);
+  context.fillStyle = '#ffffffcc'; context.font = '600 24px Barlow';
+  context.fillText(formatClock(earliest), margin, keyTop + 46);
+  context.textAlign = 'right'; context.fillText(formatClock(latest), margin + keyWidth, keyTop + 46);
+  context.textAlign = 'left'; context.fillStyle = '#ffffff'; context.font = '600 32px Barlow';
+  context.fillText('sunsetsunrise.jjpcodes.com', margin, H - safe - 8);
+  context.textAlign = 'right'; context.fillStyle = '#ffffff80'; context.font = '400 15px Barlow';
+  context.fillText('© OpenStreetMap', W - 14, H - 12);
   return canvas;
 }
 const canvasBlob = canvas => new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not create the image')), 'image/png'));
@@ -1284,7 +1280,7 @@ function openShare(open) {
   shareStatus.textContent = '';
   if (!open) return;
   stopPlaying(); openCalendar(false);
-  sharePostCanvas = drawShareImage('post');
+  sharePostCanvas = drawShareImage();
   document.getElementById('share-preview').src = sharePostCanvas.toDataURL('image/png');
   document.getElementById('share-preview').alt = document.title;
 }
@@ -1382,7 +1378,11 @@ document.getElementById('locate').addEventListener('click', () => {
 });
 function chooseSearch(place) { searchInput.value = ''; searchResults.hidden = true; searchInput.blur(); selectPlace(place, true); }
 
-await Promise.all(['400 11px Barlow', '600 12px Barlow', '600 46px Barlow', '800 17px "Barlow Condensed"'].map(font => document.fonts.load(font)));
+// Canvas text (map labels, share images) needs the web fonts loaded first. The font stylesheet may still be arriving,
+// and fonts.load() resolves at once for a face it does not know yet, so wait for the stylesheet, then for each face.
+const fontSheet = document.getElementById('fonts');
+if (!fontSheet.sheet) await new Promise(resolve => { fontSheet.addEventListener('load', resolve, { once: true }); fontSheet.addEventListener('error', resolve, { once: true }); });
+await Promise.all(['400 16px Barlow', '600 16px Barlow', '800 16px "Barlow Condensed"'].map(font => document.fonts.load(font)));
 let resizeTimer;
 new ResizeObserver(() => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (!baseProjection) return; if (viewName === 'moved') settleView(); else setView(viewName); drawChart(); }, 60); }).observe(mapArea);
 setEvent(state.event);
@@ -1412,7 +1412,7 @@ if (!params.get('place') && !params.get('point')) {
 // A link's preview picture at full size, for checking: ?card=link or ?card=post
 if (params.get('card')) {
   const view = document.createElement('div'); view.className = 'card-view';
-  const image = new Image(); image.src = drawShareImage(params.get('card')).toDataURL('image/png');
+  const image = new Image(); image.src = drawShareImage().toDataURL('image/png');
   view.append(image); document.body.append(view);
 }
 window.sunsetDesign = { colourOfDay: minutes => rampColourAt(minutes, dayDomain()), zoneAnchors: () => zoneAnchors, landDeviation: geometry.land.worstDeviation, state, placeEvent, cities: searchOrder, formatClock, render, setDay, transformTo: t => { transform = t; render(); } };

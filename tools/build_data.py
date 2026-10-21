@@ -52,12 +52,16 @@ def curated(map_name):
     block = names_source.split(f"export const {map_name} = new Map([")[1].split("]);")[0]
     return {geonames_id: name for geonames_id, _, name in re.findall(r"\['(\d+)', (['\"])(.*?)\2\]", block)}
 palestine_places, golan_places = curated("PALESTINE_PLACES"), curated("GOLAN_PLACES")
+# GeoNames IDs of big places whose GeoNames name is not the one English speakers use.
+english_names = {"2510911": "Seville", "6325494": "Quebec City"}
 cities = []
 for line in cities_path.read_text(encoding="utf-8").splitlines():
     fields = line.split("\t")
     if fields[7] in skipped_feature_codes:
         continue
     name, country, aliases = fields[1], fields[8], ""
+    if fields[0] in english_names:  # the English name where GeoNames gives the local one; the local name stays searchable
+        aliases, name = name, english_names[fields[0]]
     if country in ("IL", "PS"):
         geonames_id = fields[0]
         if geonames_id not in golan_places and geonames_id not in palestine_places:
