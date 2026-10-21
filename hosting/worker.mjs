@@ -1,5 +1,6 @@
 // Written by AI on 2026.10.21 by model GPT-6.1 Sol.
 import { placeEvent, eventWords } from './solar.mjs';
+import {lookupIpLocation, clearIpLocationCache} from './ip-location.mjs';
 const WEB_ASSETS = /*WEB_ASSETS*/ {};
 const POINT_ZONES = /*POINT_ZONES*/ '';
 const decodedAssets = new Map();
@@ -11,7 +12,6 @@ async function assetBytes(path) {
 }
 const assetText = async path => new TextDecoder().decode(await assetBytes(path));
 let placesPromise, pointZonesPromise, zoneNamesPromise;
-let ownerAddressChecked = false;
 const plainName = name => name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ø/g, 'o').replace(/æ/g, 'ae').replace(/ß/g, 'ss').replace(/ł/g, 'l').toLowerCase();
 function places() {
   return placesPromise ??= assetText('/data/cities.json').then(JSON.parse).then(rows => rows.map(([name, lat, lon, population, timeZone, country, capital, labelable, aliases]) => ({name, lat, lon, population, timeZone, capital: !!capital, searchNames: [name, ...(aliases ? aliases.split('|') : [])].map(plainName)})).sort((a, b) => b.population * (b.capital ? 10 : 1) - a.population * (a.capital ? 10 : 1)));
@@ -65,33 +65,26 @@ async function pageWithPreview(url) {
   return (await assetText('/index.html')).replace(/<title>[\s\S]*?<\/title>/, `<title>${escapeHtml(title)}</title>`).replace('</head>', `${metadata}\n</head>`);
 }
 export default {
-  async fetch(request) {
+  async fetch(request, env = {}) {
     const url = new URL(request.url);
-    const ownerCheckToken = request.headers.get('X-Owner-Address-Check');
-    if (ownerCheckToken && !ownerAddressChecked && Date.now() < 1792583892859) {
-      const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ownerCheckToken))), byte => byte.toString(16).padStart(2, '0')).join('');
-      if (digest === 'd9f91d1a375529cea1feef0f3d76af6181c4ccfa651bf2122192bceb8903b633') {
-        ownerAddressChecked = true;
-        const addressHeaders = {};
-        for (const [name, value] of request.headers) {
-          if (!/connecting-ip|forwarded|real-ip|client-ip|true-client-ip|remote-addr/i.test(name)) continue;
-          addressHeaders[name] = value.split(',').map(part => {
-            const address = part.trim();
-            if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(address)) return 'IPv4';
-            if (/^[a-f0-9:]+$/i.test(address) && address.includes(':')) return 'IPv6';
-            return 'not an address';
-          });
-        }
-        return Response.json({addressHeaders}, {headers: {'Cache-Control': 'no-store'}});
-      }
+    if (url.pathname.startsWith('/__location/')) {
+      if (!env.IP_LOCATION_PUBLISH_TOKEN || request.headers.get('Authorization') !== `Bearer ${env.IP_LOCATION_PUBLISH_TOKEN}`) return new Response('Not found', {status: 404});
+      if (request.method !== 'PUT') return new Response('Method not allowed', {status: 405, headers: {Allow: 'PUT'}});
+      const key = url.pathname.slice('/__location/'.length);
+      if (!key.startsWith('ip-location/') || key.split('/').some(part => !part || part === '..')) return new Response('Invalid object key', {status: 400});
+      const length = Number(request.headers.get('Content-Length'));
+      if (!Number.isInteger(length) || length <= 0 || length > 8 * 1048576) return new Response('Expected an object of at most 8 MiB', {status: 413});
+      await env.IP_LOCATION.put(key, request.body);
+      if (key === 'ip-location/current.json') clearIpLocationCache(env.IP_LOCATION);
+      return new Response(null, {status: 201, headers: {'Cache-Control': 'no-store'}});
     }
     if (!['GET', 'HEAD'].includes(request.method)) return new Response('Method not allowed', {status: 405, headers: {Allow: 'GET, HEAD'}});
     if (url.pathname === '/api/home') {
-      const latitude = request.cf?.latitude, longitude = request.cf?.longitude;
-      const known = latitude !== undefined && latitude !== null && latitude !== '' && longitude !== undefined && longitude !== null && longitude !== '' && Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude));
+      const address = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Real-IP');
+      const location = address && env.IP_LOCATION ? await lookupIpLocation(env.IP_LOCATION, address) : null;
       const country = [request.cf?.country, request.headers.get('CF-IPCountry')].find(value => typeof value === 'string' && /^[A-Z]{2}$/.test(value) && value !== 'XX');
-      const home = {...(country ? {country} : {}), ...(known ? {latitude: Number(latitude), longitude: Number(longitude)} : {})};
-      return new Response(request.method === 'HEAD' ? null : country || known ? JSON.stringify(home) : null, {status: country || known ? 200 : 404, headers: {'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store'}});
+      const home = location || (country ? {country} : null);
+      return new Response(request.method === 'HEAD' ? null : home ? JSON.stringify(home) : null, {status: home ? 200 : 404, headers: {'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store'}});
     }
     if (url.pathname === '/' || url.pathname === '/index.html') {
       const page = await pageWithPreview(url);

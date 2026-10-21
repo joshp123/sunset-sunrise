@@ -29,10 +29,12 @@ From a Node.js 24 environment, commit the source changes, then run:
 
 ```sh
 node hosting/build.mjs
-node ~/.codex/plugins/cache/openai-curated-remote/sites/1.0.1/scripts/site-workflow.mjs --project-id appgprj_6ad7ddad964c8191a8fe2df7b564c651
+node ~/.codex/plugins/cache/openai-curated-remote/sites/1.1.0/scripts/site-workflow.mjs --project-id appgprj_6ad7ddad964c8191a8fe2df7b564c651
 ```
 
 Obtain a fresh credential with Sites `create_source_repository_write_credential`. At the helper's hidden stdin prompt, send `{"credential": <returned credential object>, "commands": [], "archivePath": "/tmp/sunset-sunrise-sites.tar.gz"}`. Keep the credential out of files and shell arguments. Pass the helper's exact `project_id`, `commit_sha` and `archive` to Sites `save_site_version`, then its returned version ID to `deploy_site_version`. Preserve the public audience. Finally run `git push origin main`.
+
+To rebuild and upload a monthly IP location table, run `python3 tools/publish-ip-location.py --month 2026-10 --file /path/to/dbip-city-lite-2026-10.csv.gz --site https://sunsetsunrise.jjpcodes.com`. Omit `--file` to download that month's release. The script prompts for the Site's `IP_LOCATION_PUBLISH_TOKEN` secret (or reads it from the environment); configure a matching secret through Sites runtime environment settings and deploy before the first upload. It publishes the index and complete range table to the Site's R2 storage, then switches the current release atomically. Lookups read one chunk of at most 51,200 bytes, with a cached index. `hosting/storage.json` declares the storage binding included by the build.
 
 ## Rebuild the data
 
@@ -51,5 +53,6 @@ The code is under the MIT licence (see `LICENSE`). The data keeps its sources' l
 - Time zones and their names: the IANA time zone database, public domain.
 - Places: GeoNames, CC BY 4.0. Place names for Palestine follow `tools/palestine-places.mjs`.
 - Land and borders: Natural Earth via world-atlas, public domain.
+- IP location by DB-IP ([db-ip.com](https://db-ip.com)), CC BY 4.0.
 
 Inspired by Ryan Hall's sunset maps. Built alongside [Nice Weather](https://nice.jjpcodes.com).
