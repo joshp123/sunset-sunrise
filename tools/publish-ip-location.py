@@ -100,7 +100,8 @@ def put_object(site, key, path, token):
     content_type = 'application/json' if key.endswith('.json') else 'application/octet-stream'
     request = urllib.request.Request(
         f'{site.rstrip("/")}/__location/{key}', data=data, method='PUT',
-        headers={'Authorization': f'Bearer {token}', 'Content-Type': content_type},
+        headers={'Authorization': f'Bearer {token}', 'Content-Type': content_type,
+                 'User-Agent': 'sunset-sunrise-dbip-publisher/1.0'},
     )
     for attempt in range(4):
         try:

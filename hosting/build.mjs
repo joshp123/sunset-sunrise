@@ -56,8 +56,6 @@ for (const directory of ['dist/server']) {
 }
 for (const directory of ['dist/.openai']) {
   await mkdir(resolve(output, directory), {recursive: true});
-  const identity = JSON.parse(await readFile(resolve(root, '.openai/hosting.json'), 'utf8'));
-  const storage = JSON.parse(await readFile(resolve(root, 'hosting/storage.json'), 'utf8'));
-  await writeFile(resolve(output, directory, 'hosting.json'), JSON.stringify({...identity, ...storage}, null, 2) + '\n');
+  await cp(resolve(root, '.openai/hosting.json'), resolve(output, directory, 'hosting.json'));
 }
 console.log(`Packaged ${Object.keys(assets).length} assets in ${output}; Worker ${(Buffer.byteLength(worker) / 1048576).toFixed(2)} MiB.`);
