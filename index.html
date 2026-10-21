@@ -158,7 +158,7 @@ button { cursor: pointer; }
   .map-key { width: 100%; }
   .days { margin-left: 0; order: 2; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; overflow: visible; }
   .days button { white-space: normal; line-height: 1.15; padding: 5px 2px; min-height: calc(2 * 1.15em + 10px); border-radius: 10px; }
-  .clocks .segmented { flex: 1; } .clocks .segmented button { flex: 1; padding: 0 4px; }
+  .clocks .segmented { flex: 1; min-width: 0; height: auto; min-height: var(--control); } .clocks .segmented button { flex: 1; min-width: 0; padding: 4px; white-space: normal; line-height: 1.1; }
   .clocks .long { display: none; }
   .map-buttons button { height: 32px; padding: 0 10px; font-size: var(--size-small); }
   .calendar { position: fixed; left: 12px; right: 12px; bottom: 12px; width: auto; }
@@ -244,8 +244,8 @@ button { cursor: pointer; }
   <div class="clocks" role="group" aria-label="Clocks">
     <div class="segmented" id="clocks">
       <button data-clocks="as-they-are" aria-pressed="true">Clocks change</button>
-      <button data-clocks="winter-time" aria-pressed="false">Always winter<span class="long"> time</span></button>
-      <button data-clocks="summer-time" aria-pressed="false">Always summer<span class="long"> time</span></button>
+      <button data-clocks="winter-time" aria-pressed="false">Year-round winter<span class="long"> time</span></button>
+      <button data-clocks="summer-time" aria-pressed="false">Year-round summer<span class="long"> time</span></button>
     </div>
   </div>
 </footer>
@@ -1151,7 +1151,7 @@ const longDate = dateFormatter({ weekday: 'long', day: 'numeric', month: 'long',
 const phoneDate = dateFormatter({ weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 const shortDayMonth = dateFormatter({ weekday: 'short', day: 'numeric', month: 'short' });
 const dayMonth = dateFormatter({ weekday: 'long', day: 'numeric', month: 'long' });
-const clocksWords = { 'winter-time': 'winter time all year', 'summer-time': 'summer time all year' };
+const clocksWords = { 'winter-time': 'Year-round winter time', 'summer-time': 'Year-round summer time' };
 const eventName = () => state.event === 'sunset' ? 'Sunset' : 'Sunrise';
 // Tense-free, so it reads right on any date: past, today or future.
 const clockChangeWords = change => change.label === 'Clocks go back' ? 'The day the clocks go back' : 'The day the clocks go forward';
@@ -1171,7 +1171,7 @@ function writeAnswer() {
     const zone = zoneNameFor(state.place.timeZone, clockOffset(state.place.timeZone, state.dayUtcMs, state.clocks));
     const narrow = matchMedia('(max-width: 720px)').matches;
     date.textContent = `${(narrow ? phoneDate : longDate).format(state.dayUtcMs)} · ${zone}`;
-    document.getElementById('answer-tag').textContent = change ? clockChangeWords(change) : clocksWords[state.clocks] ? clocksWords[state.clocks][0].toUpperCase() + clocksWords[state.clocks].slice(1) : '';
+    document.getElementById('answer-tag').textContent = change ? clockChangeWords(change) : clocksWords[state.clocks] || '';
     document.title = `${eventWords(result)} ${state.event} ${placePhrase(state.place)}, ${longDate.format(state.dayUtcMs)}`;
   }
   writeKeyDays();
@@ -1224,7 +1224,7 @@ function drawShareImage() {
   const context = canvas.getContext('2d');
   context.fillStyle = SEA; context.fillRect(0, 0, W, H);
   const result = placeEvent(state.place, state.dayUtcMs, state.event, state.clocks), change = clockChangeToday();
-  const tag = change ? clockChangeWords(change) : clocksWords[state.clocks] ? `With ${clocksWords[state.clocks]}` : '';
+  const tag = change ? clockChangeWords(change) : clocksWords[state.clocks] || '';
   // The map, on the right, the full height of the image.
   const map = { x: 620, y: 0, width: W - 620, height: H };
   const projection = d3.geoMercator().scale(map.width / (40 * DEG)).translate([0, 0]);

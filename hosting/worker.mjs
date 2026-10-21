@@ -53,7 +53,7 @@ async function pageWithPreview(url) {
     const phrase = place.point ? place.name : `in ${place.name}`;
     title = `${eventWords(result)}${result.polar ? '' : ` ${event}`} ${phrase}, ${date}`;
   }
-  const clockDescription = clocks === 'winter-time' ? ' With winter time all year.' : clocks === 'summer-time' ? ' With summer time all year.' : '';
+  const clockDescription = clocks === 'winter-time' ? ' Year-round winter time.' : clocks === 'summer-time' ? ' Year-round summer time.' : '';
   const description = `${title}.${clockDescription} Explore sunset and sunrise times around the world.`;
   const image = `${url.origin}/share.png`;
   const tags = {
