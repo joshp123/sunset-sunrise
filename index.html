@@ -116,7 +116,8 @@ button { cursor: pointer; }
 .date-line { border: 0; background: transparent; padding: 0; color: var(--muted); font: inherit; display: inline-flex; align-items: center; gap: 6px; max-width: 100%; text-align: left; }
 .date-line:hover { color: var(--text); }
 .date-line svg { width: calc(12px * var(--ui)); height: calc(12px * var(--ui)); fill: none; stroke: currentColor; stroke-width: 1.8; flex: none; }
-.date-wrap, .share-wrap { position: relative; }
+/* No id or class here may contain "share": blocker lists (Fanboy Social, AdGuard Social) hide .share-wrap and .share-panel. */
+.date-wrap, .picture-wrap { position: relative; }
 .calendar { position: absolute; left: 0; top: calc(100% + 10px); width: calc(300px * var(--ui)); background: var(--page); border: 1px solid var(--border); border-radius: var(--radius-panel); box-shadow: var(--shadow); padding: calc(12px * var(--ui)); z-index: 9; }
 .calendar-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-weight: 600; }
 .calendar-head button { border: 0; background: var(--raised); border-radius: 8px; width: calc(34px * var(--ui)); height: calc(34px * var(--ui)); font-size: 18px; }
@@ -131,18 +132,18 @@ button { cursor: pointer; }
 #year-chart { width: 100%; height: var(--chart-height); display: block; cursor: ew-resize; touch-action: none; }
 .chart-tooltip { position: absolute; top: 0; transform: translate(-50%, -100%); pointer-events: none; background: var(--page); border: 1px solid var(--border); box-shadow: var(--shadow); border-radius: 8px; padding: 5px 9px; font-size: var(--size-small); white-space: nowrap; z-index: 4; }
 .chart-tooltip b { font-weight: 600; }
-.share-panel { position: absolute; right: 0; top: calc(var(--control) + 10px); width: calc(340px * var(--ui)); background: var(--page); border: 1px solid var(--border); border-radius: var(--radius-panel); box-shadow: var(--shadow); padding: calc(12px * var(--ui)); z-index: 9; }
-.share-panel img { width: 100%; height: auto; display: block; border-radius: 8px; }
-.control.share-button { height: calc(48px * var(--ui)); padding: 0 calc(24px * var(--ui)); gap: calc(10px * var(--ui)); background: var(--headline); color: #ffffff; font-size: calc(18px * var(--ui)); font-weight: 600; box-shadow: 0 2px 10px #ef444455; }
-.control.share-button:hover { background: var(--headline); filter: brightness(1.08); }
-.control.share-button svg { width: calc(20px * var(--ui)); height: calc(20px * var(--ui)); stroke-width: 2.2; }
+.picture-panel { position: absolute; right: 0; top: calc(var(--control) + 10px); width: calc(340px * var(--ui)); background: var(--page); border: 1px solid var(--border); border-radius: var(--radius-panel); box-shadow: var(--shadow); padding: calc(12px * var(--ui)); z-index: 9; }
+.picture-panel img { width: 100%; height: auto; display: block; border-radius: 8px; }
+.control.picture-button { height: calc(48px * var(--ui)); padding: 0 calc(24px * var(--ui)); gap: calc(10px * var(--ui)); background: var(--headline); color: #ffffff; font-size: calc(18px * var(--ui)); font-weight: 600; box-shadow: 0 2px 10px #ef444455; }
+.control.picture-button:hover { background: var(--headline); filter: brightness(1.08); }
+.control.picture-button svg { width: calc(20px * var(--ui)); height: calc(20px * var(--ui)); stroke-width: 2.2; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .panel-head .close { border: 0; background: var(--raised); width: 32px; height: 32px; border-radius: 999px; font-size: 20px; line-height: 1; }
 .backdrop { position: fixed; inset: 0; z-index: 8; background: transparent; }
-.share-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); margin-top: calc(12px * var(--ui)); }
-.share-actions .control { justify-content: center; }
-.share-actions .primary { grid-column: 1 / -1; background: var(--selected-background); color: var(--selected-text); }
-.share-status { margin: 8px 0 0; min-height: 1.2em; color: var(--muted); font-size: var(--size-small); }
+.picture-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); margin-top: calc(12px * var(--ui)); }
+.picture-actions .control { justify-content: center; }
+.picture-actions .primary { grid-column: 1 / -1; background: var(--selected-background); color: var(--selected-text); }
+.picture-status { margin: 8px 0 0; min-height: 1.2em; color: var(--muted); font-size: var(--size-small); }
 .card-view { position: fixed; inset: 0; background: #000; display: flex; align-items: center; justify-content: center; z-index: 20; }
 .card-view img { max-width: 100%; max-height: 100%; }
 
@@ -154,7 +155,7 @@ button { cursor: pointer; }
   .answer-dateline { flex-direction: column; align-items: flex-start; gap: 0; }
   .answer-tag { min-height: 1.2em; max-width: 100%; } .answer-tag::before { display: none; }
   .calendar { top: auto; }
-  .tools .search { flex: 1; min-width: 0; } .control.share-button { height: var(--control); padding: 0 16px; font-size: 17px; }
+  .tools .search { flex: 1; min-width: 0; } .control.picture-button { height: var(--control); padding: 0 16px; font-size: 17px; }
   .year-bar { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .map-key { width: 100%; }
   .days { margin-left: 0; order: 2; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; overflow: visible; }
@@ -163,8 +164,8 @@ button { cursor: pointer; }
   .clocks .long { display: none; }
   .map-buttons button { height: 32px; padding: 0 10px; font-size: var(--size-small); }
   .calendar { position: fixed; left: 12px; right: 12px; bottom: 12px; width: auto; }
-  .share-panel { position: fixed; left: 12px; right: 12px; top: auto; bottom: 12px; width: auto; max-height: calc(100dvh - 24px); overflow: auto; }
-  .share-panel img { width: auto; max-width: 100%; max-height: 46dvh; margin: 0 auto; }
+  .picture-panel { position: fixed; left: 12px; right: 12px; top: auto; bottom: 12px; width: auto; max-height: calc(100dvh - 24px); overflow: auto; }
+  .picture-panel img { width: auto; max-width: 100%; max-height: 46dvh; margin: 0 auto; }
   .backdrop { background: #0009; }
 }
 </style>
@@ -193,17 +194,17 @@ button { cursor: pointer; }
       <button class="locate" id="locate" aria-label="My location" title="My location"><svg viewBox="0 0 16 16"><path d="M14 2 2 7.2l5.2 1.6L8.8 14z"/></svg></button>
       <div class="search-results" id="search-results" hidden></div>
     </div>
-    <div class="share-wrap">
-        <button class="control share-button" id="share-button"><svg viewBox="0 0 16 16"><path d="M8 10V1.5M4.5 5 8 1.5 11.5 5M3 8v6.5h10V8"/></svg>Share</button>
-        <div class="share-panel" id="share-panel" role="dialog" aria-label="Share" hidden>
-          <div class="panel-head"><b>Share</b><button class="close" id="share-close" aria-label="Close">×</button></div>
-          <img id="share-preview" alt="">
-          <div class="share-actions">
-            <button class="control primary" id="share-native" hidden>Share…</button>
+    <div class="picture-wrap">
+        <button class="control picture-button" id="picture-button"><svg viewBox="0 0 16 16"><path d="M8 10V1.5M4.5 5 8 1.5 11.5 5M3 8v6.5h10V8"/></svg>Share</button>
+        <div class="picture-panel" id="picture-panel" role="dialog" aria-label="Share this view" hidden>
+          <div class="panel-head"><b>Share</b><button class="close" id="picture-close" aria-label="Close">×</button></div>
+          <img id="picture-preview" alt="">
+          <div class="picture-actions">
+            <button class="control primary" id="picture-native" hidden>Share…</button>
             <button class="control" id="copy-image">Copy image</button>
             <button class="control" id="copy-link">Copy link</button>
           </div>
-          <p class="share-status" id="share-status" role="status"></p>
+          <p class="picture-status" id="picture-status" role="status"></p>
         </div>
       </div>
   </div>
@@ -1272,7 +1273,7 @@ function drawShareImage() {
 }
 const canvasBlob = canvas => new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not create the image')), 'image/png'));
 const imageName = () => `${state.event}-${plainName(state.place.name).replace(/\W+/g, '-')}-${new Date(state.dayUtcMs).toISOString().slice(0, 10)}.png`;
-const sharePanel = document.getElementById('share-panel'), shareStatus = document.getElementById('share-status');
+const sharePanel = document.getElementById('picture-panel'), shareStatus = document.getElementById('picture-status');
 let sharePostCanvas = null;
 const backdrop = document.getElementById('backdrop');
 backdrop.addEventListener('click', () => { openShare(false); openCalendar(false); });
@@ -1282,14 +1283,14 @@ function openShare(open) {
   if (!open) return;
   stopPlaying(); openCalendar(false);
   sharePostCanvas = drawShareImage();
-  document.getElementById('share-preview').src = sharePostCanvas.toDataURL('image/png');
-  document.getElementById('share-preview').alt = document.title;
+  document.getElementById('picture-preview').src = sharePostCanvas.toDataURL('image/png');
+  document.getElementById('picture-preview').alt = document.title;
 }
-document.getElementById('share-button').addEventListener('click', () => openShare(sharePanel.hidden));
-document.getElementById('share-close').addEventListener('click', () => openShare(false));
+document.getElementById('picture-button').addEventListener('click', () => openShare(sharePanel.hidden));
+document.getElementById('picture-close').addEventListener('click', () => openShare(false));
 document.addEventListener('keydown', event => { if (event.key === 'Escape') { openShare(false); openCalendar(false); document.getElementById('search-results').hidden = true; } });
 document.addEventListener('pointerdown', event => {
-  if (!sharePanel.hidden && !event.target.closest('.share-wrap')) openShare(false);
+  if (!sharePanel.hidden && !event.target.closest('.picture-wrap')) openShare(false);
   if (!calendar.hidden && !event.target.closest('.date-wrap')) openCalendar(false);
 });
 document.getElementById('copy-link').addEventListener('click', async () => { await navigator.clipboard.writeText(shareUrl()); shareStatus.textContent = 'Link copied. It opens this place, day and view.'; });
@@ -1302,7 +1303,7 @@ document.getElementById('copy-image').addEventListener('click', async () => {
     shareStatus.textContent = 'Image downloaded.';
   }
 });
-const nativeShare = document.getElementById('share-native');
+const nativeShare = document.getElementById('picture-native');
 nativeShare.hidden = !(navigator.canShare && matchMedia('(pointer: coarse)').matches);
 nativeShare.addEventListener('click', async () => {
   const file = new File([await canvasBlob(sharePostCanvas)], imageName(), { type: 'image/png' });
