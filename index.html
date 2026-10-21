@@ -1150,6 +1150,8 @@ const shortDayMonth = dateFormatter({ weekday: 'short', day: 'numeric', month: '
 const dayMonth = dateFormatter({ weekday: 'long', day: 'numeric', month: 'long' });
 const clocksWords = { 'winter-time': 'winter time all year', 'summer-time': 'summer time all year' };
 const eventName = () => state.event === 'sunset' ? 'Sunset' : 'Sunrise';
+// Tense-free, so it reads right on any date: past, today or future.
+const clockChangeWords = change => change.label === 'Clocks go back' ? 'The day the clocks go back' : 'The day the clocks go forward';
 function clockChangeToday() {
   if (state.clocks !== 'as-they-are') return null;
   return chartData().keyDates.find(mark => mark.clockChange && mark.day === state.dayUtcMs) || null;
@@ -1166,7 +1168,7 @@ function writeAnswer() {
     const zone = zoneNameFor(state.place.timeZone, clockOffset(state.place.timeZone, state.dayUtcMs, state.clocks));
     const narrow = matchMedia('(max-width: 720px)').matches;
     date.textContent = `${(narrow ? phoneDate : longDate).format(state.dayUtcMs)} · ${zone}`;
-    document.getElementById('answer-tag').textContent = change ? `${change.label.replace('go', 'went')} today` : clocksWords[state.clocks] ? clocksWords[state.clocks][0].toUpperCase() + clocksWords[state.clocks].slice(1) : '';
+    document.getElementById('answer-tag').textContent = change ? clockChangeWords(change) : clocksWords[state.clocks] ? clocksWords[state.clocks][0].toUpperCase() + clocksWords[state.clocks].slice(1) : '';
     document.title = `${eventWords(result)} ${state.event} ${placePhrase(state.place)}, ${longDate.format(state.dayUtcMs)}`;
   }
   writeKeyDays();
@@ -1229,7 +1231,7 @@ function drawShareImage(kind) {
   const other = state.event === 'sunset' ? 'sunrise' : 'sunset', otherResult = placeEvent(state.place, state.dayUtcMs, other, state.clocks);
   lines.push([`${other === 'sunrise' ? 'Sunrise' : 'Sunset'} ${eventWords(otherResult)}`, '#ffffffcc', 400]);
   if (clocksWords[state.clocks]) lines.push([`With ${clocksWords[state.clocks]}`, '#fbbf24', 600]);
-  if (change) lines.push([`${change.label.replace('go', 'went')} today`, '#fbbf24', 600]);
+  if (change) lines.push([clockChangeWords(change), '#fbbf24', 600]);
   const firstLine = figureBaseline + lineSize * 1.55, wordsBottom = firstLine + (lines.length - 1) * lineSize * 1.22 + lineSize * 0.4;
   const map = portrait ? { x: 0, y: Math.round(wordsBottom + 28), width: W } : { x: 450, y: 0, width: 750, height: H };
   if (portrait) map.height = H - 150 - map.y;
