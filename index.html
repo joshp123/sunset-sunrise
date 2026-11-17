@@ -1220,9 +1220,10 @@ document.getElementById('calendar-grid').addEventListener('click', event => { co
 // ================================================================ Share pictures: built for the frame they land in
 // The map fills its part of the frame; the words sit on Ryan Hall's navy beside or above it. Framing comes from the link
 // alone (the place and its surroundings), so the same link always makes the same picture.
-// Two shapes, each one Twitter shows whole. A picture attached to a post is 20:17, the widest shape Twitter's carousel shows
-// whole; it shows it whole on its own too. A link's preview is 2:1, which Twitter may trim to 1.91:1, so its sides keep a wide margin.
-const SHARE_SHAPES = { post: { width: 1600, height: 1360 }, link: { width: 1800, height: 900 } };
+// Two shapes, each one Twitter shows whole. A picture attached to a post is 7:8: the tile Twitter's web composer and two-picture
+// grid crop to, narrow enough for the phone carousel to show whole, and shown whole on its own. A link's preview is 2:1, which
+// Twitter may trim to 1.91:1, so its sides keep a wide margin.
+const SHARE_SHAPES = { post: { width: 1400, height: 1600 }, link: { width: 1800, height: 900 } };
 function drawShareImage(shapeName = 'post') {
   const { width: W, height: H } = SHARE_SHAPES[shapeName], margin = 72;
   const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
@@ -1277,7 +1278,7 @@ function drawShareImage(shapeName = 'post') {
     write(headline, wordsX, 150, '#ffffff', `600 ${fit(headline, 600, 64, wordsWidth)}px Barlow`);
     write(date, wordsX, 218, '#ffffffcc', `400 ${fit(date, 400, 50, wordsWidth)}px Barlow`);
     if (tag) write(tag, wordsX, 280, '#fbbf24', `600 ${fit(tag, 600, 50, wordsWidth)}px Barlow`);
-    drawKey(margin, footTop + 56, 640, 30);
+    drawKey(margin, footTop + 56, 560, 30);
     write('sunsetsunrise.jjpcodes.com', W - margin, H - 50, '#ffffff', '600 48px Barlow', 'right');
     return canvas;
   }
